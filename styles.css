@@ -2279,6 +2279,135 @@ mark.reader-hl {
   border-color: var(--gold);
 }
 
+/* Cloudflare Workers AI Live Streaming & Config Styles */
+.ai-pill.cf-live {
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.55);
+  outline: 1px solid rgba(16, 185, 129, 0.65);
+}
+
+.cf-config-panel {
+  padding: 14px;
+  border-radius: 13px;
+  border: 1px solid var(--gold-border);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(245, 184, 28, 0.06));
+}
+
+.cf-status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-soft);
+}
+
+.cf-status-pill.live {
+  border-color: rgba(16, 185, 129, 0.48);
+  background: rgba(16, 185, 129, 0.14);
+  color: var(--emerald);
+}
+
+.cf-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.cf-url-row .input-field {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+.cf-setup-guide {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface);
+  font-size: 12.8px;
+  color: var(--text-soft);
+}
+
+.cf-setup-guide summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--gold-bright);
+}
+
+.cf-setup-guide ol {
+  margin: 8px 0 0 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  line-height: 1.65;
+}
+
+.ai-stream-box {
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(16, 185, 129, 0.32);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.08), rgba(16, 185, 129, 0.02));
+  margin-bottom: 10px;
+}
+
+.ai-stream-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12.2px;
+  font-weight: 700;
+  color: var(--emerald);
+  margin-bottom: 7px;
+}
+
+.ai-stream-body {
+  font-size: 15.5px;
+  line-height: 1.85;
+  color: var(--text);
+}
+
+.stream-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 15px;
+  margin-left: 3px;
+  vertical-align: -2px;
+  background: var(--gold-bright);
+  border-radius: 2px;
+  animation: streamBlink 0.8s infinite;
+}
+
+@keyframes streamBlink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.15; }
+}
+
+.verbatim-details {
+  margin-top: 8px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-2);
+}
+
+.verbatim-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.verbatim-details[open] summary {
+  margin-bottom: 8px;
+  color: var(--gold-bright);
+}
+
 /* Floating Toast Notification */
 .app-toast {
   position: fixed;
@@ -2394,6 +2523,7 @@ mark.reader-hl {
   #pubSourceSelect,
   .reader-search-input,
   #cmdSearchInput,
+  #cfWorkerUrlInput,
   #questionInput {
     font-size: 16px !important;
   }

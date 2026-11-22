@@ -42,6 +42,20 @@
   const CITY_KEY = 'dawahx_user_city_v4';
   const THEME_KEY = 'dawahx_theme_v4';
   const FONTSIZE_KEY = 'dawahx_fontsize_v4';
+  const CF_WORKER_KEY = 'dawahx_cf_worker_url_v1';
+  const DEFAULT_CF_WORKER_URL = String(window.DAWAHX_WORKER_URL || '').trim().replace(/\/+$/, '');
+
+  // Support 1-click `?worker=https://...` auto-linking
+  try {
+    const paramWorker = new URLSearchParams(location.search).get('worker');
+    if (paramWorker && /^https?:\/\//i.test(paramWorker.trim())) {
+      localStorage.setItem(CF_WORKER_KEY, paramWorker.trim().replace(/\/+$/, ''));
+    }
+  } catch (_) {}
+
+  let cfAiAvailable = false;
+  let cfAiEndpointBase = '';
+  let cfAiModelName = 'Llama 3.3 70B';
 
   let selectedCityId = localStorage.getItem(CITY_KEY) || 'dhaka';
   let activeQuoteMeta = { title: '', source: '', url: '', theme: 'dark', blob: null };
@@ -610,14 +624,199 @@
     } catch (_) {}
   }
 
-  // Optional client-side Generative LLM enhancement (supports natural conversation + strict DAWAH X grounding for Islamic rulings)
-  async function maybeEnhanceWithBrowserLLM(question, data, targetEl) {
+  // Cloudflare Workers AI Auto-Discovery + Live Streaming Generative RAG & Conversation
+  function updateCfStatusUI() {
+    const pill = document.getElementById('headerAiPill');
+    const badge = document.getElementById('cfAiStatusBadge');
+    if (pill) {
+      pill.classList.toggle('cf-live', cfAiAvailable);
+      pill.title = cfAiAvailable
+        ? `Cloudflare Workers AI সক্রিয় (${cfAiModelName} · Live Streaming)`
+        : 'DAWAH X AI ইঞ্জিন';
+    }
+    if (badge) {
+      badge.classList.toggle('live', cfAiAvailable);
+      badge.textContent = cfAiAvailable
+        ? '🟢 সক্রিয় · Cloudflare AI (Llama 3.3 70B)'
+        : '⚪ স্ট্যান্ডঅ্যালোন ব্রাউজার মোড';
+    }
+  }
+
+  async function detectCloudflareAI(explicitUrl) {
+    const storedUrl =
+      explicitUrl !== undefined
+        ? String(explicitUrl || '').trim().replace(/\/+$/, '')
+        : (localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL).trim().replace(/\/+$/, '');
+
+    // Avoid 404 console noise when hosted on static github.io without a configured Worker URL
+    if (!storedUrl && location.hostname.endsWith('.github.io')) {
+      cfAiAvailable = false;
+      cfAiEndpointBase = '';
+      updateCfStatusUI();
+      return false;
+    }
+
+    const healthUrl = storedUrl ? `${storedUrl}/api/health` : 'api/health';
+    try {
+      const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store' });
+      const ctype = res.headers.get('content-type') || '';
+      if (res.ok && ctype.includes('application/json')) {
+        const info = await res.json();
+        if (info && info.ok && info.engine === 'cloudflare-workers-ai') {
+          cfAiAvailable = true;
+          cfAiEndpointBase = storedUrl;
+          cfAiModelName = String(info.primary_model || '').includes('70b') ? 'Llama 3.3 70B' : 'Cloudflare AI';
+          updateCfStatusUI();
+          return true;
+        }
+      }
+    } catch (_) {}
+
+    cfAiAvailable = false;
+    cfAiEndpointBase = '';
+    updateCfStatusUI();
+    return false;
+  }
+
+  function applyGeneratedAnswerToCard(answerCard, data, generatedText) {
+    if (!generatedText) return;
+    data.ai_generated = generatedText;
+    // Update last assistant history entry & persisted session so follow-ups remember the AI synthesis
+    for (let i = chatHistory.length - 1; i >= 0; i--) {
+      if (chatHistory[i].role === 'assistant') {
+        chatHistory[i].text = generatedText.slice(0, 1100);
+        break;
+      }
+    }
+    persistCurrentSession();
+
+    const speakBtn = answerCard?.querySelector('[data-speak-text]');
+    if (speakBtn) {
+      speakBtn.setAttribute('data-speak-text', `${data.headline ? data.headline + '। ' : ''}${generatedText}`);
+    }
+    const mainCopyBtn = answerCard?.querySelector('.card-actions-bar [data-copy-answer]');
+    if (mainCopyBtn) {
+      const srcLine = data.sources?.[0]?.dawahx_url ? `\n\nসূত্র: ${data.sources[0].dawahx_url}` : '';
+      mainCopyBtn.setAttribute(
+        'data-copy-answer',
+        `${data.headline ? data.headline + '\n\n' : ''}${generatedText}${srcLine}`
+      );
+    }
+  }
+
+  async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
+    if (!targetEl) return;
+
+    const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
+    const isBubble = Boolean(data.is_chat || data.status === 'conversational' || data.status === 'not_found');
+    const mode =
+      data.status === 'not_found'
+        ? 'not_found_islamic'
+        : hasRag && !data.is_chat
+          ? 'grounded'
+          : 'chat';
+
+    // 1) Primary: Cloudflare Workers AI Live Token Streaming (zero API key needed by visitors!)
+    if (cfAiAvailable) {
+      const aiUrl = cfAiEndpointBase ? `${cfAiEndpointBase}/api/ai` : 'api/ai';
+      const fallbackHtml = targetEl.innerHTML;
+      let streamBody = null;
+      let statusSpan = null;
+
+      if (isBubble) {
+        targetEl.innerHTML = `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>`;
+        streamBody = targetEl.querySelector('[data-stream-body]');
+      } else {
+        targetEl.innerHTML =
+          `<div class="ai-stream-box">` +
+          `<div class="ai-stream-head">` +
+          `<span data-stream-status>✦ DAWAH X AI ব্যাখ্যা সাজাচ্ছে...</span>` +
+          `<small>শতভাগ DAWAH X দলিলভিত্তিক</small>` +
+          `</div>` +
+          `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
+          `</div>` +
+          (fallbackHtml.trim()
+            ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
+            : '');
+        streamBody = targetEl.querySelector('[data-stream-body]');
+        statusSpan = targetEl.querySelector('[data-stream-status]');
+      }
+
+      try {
+        const res = await fetch(aiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            question,
+            mode,
+            stream: true,
+            history: (historySnapshot || chatHistory.slice(0, -2)).slice(-8),
+            rag_context: hasRag ? data.rag_context.slice(0, 5) : [],
+            evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 4) : [],
+          }),
+        });
+
+        if (!res.ok || !res.body) throw new Error('Stream unavailable');
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let sseBuf = '';
+        let fullText = '';
+        let rafScheduled = false;
+
+        const flushRender = (doneNow) => {
+          rafScheduled = false;
+          if (!streamBody) return;
+          if (!fullText && !doneNow) return;
+          streamBody.innerHTML =
+            formatRichText(fullText.trim()) + (doneNow ? '' : '<span class="stream-cursor"></span>');
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          sseBuf += decoder.decode(value, { stream: true });
+          const lines = sseBuf.split(/\r?\n/);
+          sseBuf = lines.pop() || '';
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+            if (!line.startsWith('data:')) continue;
+            const payload = line.slice(5).trim();
+            if (payload === '[DONE]') continue;
+            try {
+              const evt = JSON.parse(payload);
+              if (typeof evt.token === 'string' && evt.token) {
+                fullText += evt.token;
+                if (!rafScheduled) {
+                  rafScheduled = true;
+                  requestAnimationFrame(() => flushRender(false));
+                }
+              }
+            } catch (_) {}
+          }
+        }
+
+        const cleaned = fullText.trim();
+        if (cleaned) {
+          flushRender(true);
+          if (statusSpan) statusSpan.textContent = `✓ DAWAH X AI বিশ্লেষণ · ${cfAiModelName}`;
+          applyGeneratedAnswerToCard(answerCard, data, cleaned);
+          return;
+        }
+        targetEl.innerHTML = fallbackHtml;
+        return;
+      } catch (_) {
+        targetEl.innerHTML = fallbackHtml;
+      }
+    }
+
+    // 2) Secondary Optional Fallback: User-provided Gemini / Groq / OpenAI Key in Browser
     const provider = localStorage.getItem('dawahx_llm_provider') || 'none';
     const apiKey = (localStorage.getItem('dawahx_llm_key') || '').trim();
     if (provider === 'none' || !apiKey) return;
 
-    const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
-    const recentTurns = chatHistory
+    const recentTurns = (historySnapshot || chatHistory)
       .slice(-6)
       .map((t) => `${t.role === 'user' ? 'ব্যবহারকারী' : 'DAWAH X AI'}: ${t.text}`)
       .join('\n');
@@ -679,13 +878,20 @@
       }
 
       if (generated && targetEl) {
-        const paras = generated
-          .split(/\n{2,}/)
-          .map((p) => `<p>${formatRichText(p.trim())}</p>`)
-          .join('');
-        targetEl.innerHTML =
-          `<div style="font-size:12px;color:var(--emerald);margin-bottom:6px;font-weight:600;">✦ জেনারেটিভ সারসংক্ষেপ (শতভাগ DAWAH X দলিলভিত্তিক):</div>` +
-          paras;
+        if (isBubble) {
+          targetEl.innerHTML = `<div class="ai-stream-body">${formatRichText(generated.trim())}</div>`;
+        } else {
+          const origHtml = targetEl.innerHTML;
+          targetEl.innerHTML =
+            `<div class="ai-stream-box">` +
+            `<div class="ai-stream-head"><span>✦ জেনারেটিভ বিশ্লেষণ (শতভাগ DAWAH X দলিলভিত্তিক)</span></div>` +
+            `<div class="ai-stream-body">${formatRichText(generated.trim())}</div>` +
+            `</div>` +
+            (origHtml.trim()
+              ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${origHtml}</details>`
+              : '');
+        }
+        applyGeneratedAnswerToCard(answerCard, data, generated.trim());
       }
     } catch (_) {}
   }
@@ -710,9 +916,17 @@
       ? `<span class="badge-source">${escHtml(data.primary_source_name)}</span>`
       : '';
 
-    const explanationHtml = (data.explanation_paragraphs || [])
+    const rawExplanationHtml = (data.explanation_paragraphs || [])
       .map((p) => `<p>${formatRichText(p)}</p>`)
       .join('');
+    const explanationHtml = data.ai_generated
+      ? data.is_chat || data.status === 'conversational' || data.status === 'not_found'
+        ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
+        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ DAWAH X AI বিশ্লেষণ</span><small>শতভাগ DAWAH X দলিলভিত্তিক</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
+          (rawExplanationHtml
+            ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${rawExplanationHtml}</details>`
+            : '')
+      : rawExplanationHtml;
 
     // Dalil / Quran & Hadith Evidences
     let dalilHtml = '';
@@ -828,15 +1042,14 @@
           ? `<div style="margin-top:4px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
           : '';
 
-      const ttsChatPayload = [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
+      const ttsChatPayload = data.ai_generated || [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
       wrap.innerHTML = `
         <div class="ai-avatar-dot" title="DAWAH X AI">
           <img src="logo-icon.webp" alt="DX" />
         </div>
         <div class="ai-chat-bubble">
           <div data-llm-slot>
-            <p>${formatRichText(data.direct_answer)}</p>
-            ${explanationHtml}
+            ${data.ai_generated ? explanationHtml : `<p>${formatRichText(data.direct_answer)}</p>${explanationHtml}`}
           </div>
           ${dalilHtml}
           ${sourcesHtml}
@@ -1044,11 +1257,9 @@
       chatContainer.appendChild(answerCard);
       answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // Optional client-side LLM prose polish or open-ended conversation if user enabled it in settings
-      if (data.status === 'answered' || data.status === 'not_found') {
-        const slot = answerCard.querySelector('[data-llm-slot]');
-        maybeEnhanceWithBrowserLLM(question, data, slot);
-      }
+      // Stream live generative response via Cloudflare Workers AI (or optional Browser LLM) across ALL modes!
+      const slot = answerCard.querySelector('[data-llm-slot]');
+      maybeEnhanceWithBrowserLLM(question, data, slot, answerCard, historySnapshot);
     } catch (err) {
       loader.remove();
       const errCard = document.createElement('div');
@@ -1205,6 +1416,49 @@
     backdrop.classList.add('open');
     document.getElementById('llmProvider').value = localStorage.getItem('dawahx_llm_provider') || 'none';
     document.getElementById('llmApiKey').value = localStorage.getItem('dawahx_llm_key') || '';
+    const cfInput = document.getElementById('cfWorkerUrlInput');
+    if (cfInput) cfInput.value = localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL || '';
+    updateCfStatusUI();
+  });
+
+  document.getElementById('saveCfWorkerBtn')?.addEventListener('click', async () => {
+    const cfInput = document.getElementById('cfWorkerUrlInput');
+    const msgEl = document.getElementById('cfSavedMsg');
+    const rawVal = String(cfInput?.value || '').trim().replace(/\/+$/, '');
+    if (msgEl) {
+      msgEl.style.color = 'var(--gold-bright)';
+      msgEl.textContent = '⏳ Cloudflare Worker সংযোগ পরীক্ষা করা হচ্ছে...';
+    }
+    if (rawVal) {
+      localStorage.setItem(CF_WORKER_KEY, rawVal);
+    } else {
+      localStorage.removeItem(CF_WORKER_KEY);
+    }
+    const ok = await detectCloudflareAI(rawVal);
+    if (msgEl) {
+      if (ok) {
+        msgEl.style.color = 'var(--emerald)';
+        msgEl.textContent = '✓ মাশাআল্লাহ! Cloudflare Workers AI (Llama 3.3 70B) সফলভাবে সংযুক্ত হয়েছে!';
+      } else {
+        msgEl.style.color = '#f87171';
+        msgEl.textContent = rawVal
+          ? '⚠ Worker URL-এ /api/health সাড়া দেয়নি। URL ও [ai] binding যাচাই করুন।'
+          : 'ℹ কাস্টম Worker URL সরানো হয়েছে।';
+      }
+    }
+  });
+
+  document.getElementById('clearCfWorkerBtn')?.addEventListener('click', async () => {
+    localStorage.removeItem(CF_WORKER_KEY);
+    const cfInput = document.getElementById('cfWorkerUrlInput');
+    const msgEl = document.getElementById('cfSavedMsg');
+    if (cfInput) cfInput.value = '';
+    await detectCloudflareAI('');
+    if (msgEl) {
+      msgEl.style.color = 'var(--muted)';
+      msgEl.textContent = '✓ রিসেট হয়েছে।';
+      setTimeout(() => (msgEl.textContent = ''), 2200);
+    }
   });
 
   document.getElementById('copyEmbedBtn').addEventListener('click', (e) => {
@@ -1927,7 +2181,8 @@
   setInterval(updateLivePrayerBadge, 45000);
   checkLiveBroadcast();
   setInterval(checkLiveBroadcast, 120000);
-  loadStats().then(() => {
+  const cfReadyPromise = detectCloudflareAI();
+  Promise.all([loadStats(), cfReadyPromise]).then(() => {
     // Support shareable ?q=... deep query links!
     const urlQ = new URLSearchParams(location.search).get('q');
     if (urlQ && urlQ.trim()) {

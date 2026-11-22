@@ -1,0 +1,35 @@
+name: Deploy Cloudflare Workers AI
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy DAWAH X AI to Cloudflare Workers
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build static frontend bundle
+        run: node cloudflare/build-assets.mjs
+
+      - name: Check Cloudflare Secrets & Deploy Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "ℹ️ CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID secrets not set in GitHub Actions."
+            echo "Skipping Action deploy (use Cloudflare Dashboard -> Workers & Pages -> Import Git Repo, or add secrets in GitHub Settings -> Secrets and variables -> Actions)."
+            exit 0
+          fi
+          npx --yes wrangler@4 deploy

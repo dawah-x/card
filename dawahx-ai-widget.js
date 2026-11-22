@@ -12,8 +12,27 @@
   if (window.__DAWAHX_AI_WIDGET_LOADED__) return;
   window.__DAWAHX_AI_WIDGET_LOADED__ = true;
 
+  const scriptEl =
+    document.currentScript || document.querySelector('script[src*="dawahx-ai-widget"]');
   const SITE_BASE = (window.DAWAHX_SITE_URL || 'https://ebrahim-ead.github.io/DAWAH-X').replace(/\/+$/, '');
   const API_URL = (window.DAWAHX_AI_API_URL || '').replace(/\/+$/, '');
+
+  let detectedWorkerBase = (
+    (scriptEl && scriptEl.dataset && scriptEl.dataset.workerUrl) ||
+    window.DAWAHX_WORKER_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/+$/, '');
+
+  if (!detectedWorkerBase && scriptEl && scriptEl.src) {
+    try {
+      const sUrl = new URL(scriptEl.src, location.href);
+      if (!sUrl.hostname.endsWith('.github.io')) {
+        detectedWorkerBase = sUrl.origin;
+      }
+    } catch (_) {}
+  }
 
   const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
   const FOLD_MAP = { 'ী': 'ি', 'ূ': 'ু', 'ঈ': 'ই', 'ঊ': 'উ', 'ছ': 'স', 'শ': 'স', 'ষ': 'স', 'য': 'জ', 'ণ': 'ন', 'ৎ': 'ত' };
@@ -514,15 +533,71 @@
         .join('');
 
       if (resData.is_chat || resData.status === 'conversational') {
-        a.innerHTML = `<div>${esc(resData.direct_answer || '')}</div>${links}`;
+        a.innerHTML = `<div class="w-stream">${esc(resData.direct_answer || '')}</div>${links}`;
       } else {
         a.innerHTML = `
           <h4>${esc(resData.headline || 'উত্তর')}</h4>
-          <div class="verdict">${esc(resData.direct_answer || '')}</div>
+          <div class="verdict w-stream">${esc(resData.direct_answer || '')}</div>
           ${links || `<a class="src-link" href="${SITE_BASE}/ask.html" target="_blank">✉ DAWAH X টিমে প্রশ্ন পাঠান ↗</a>`}
         `;
       }
       msgsBox.scrollTop = msgsBox.scrollHeight;
+
+      // Live Cloudflare Workers AI stream inside floating widget when connected
+      if (detectedWorkerBase) {
+        const streamSlot = a.querySelector('.w-stream');
+        const hasRag = Array.isArray(resData.rag_context) && resData.rag_context.length > 0;
+        const mode =
+          resData.status === 'not_found'
+            ? 'not_found_islamic'
+            : hasRag && !resData.is_chat
+              ? 'grounded'
+              : 'chat';
+        try {
+          const cfRes = await fetch(`${detectedWorkerBase}/api/ai`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question: q,
+              mode,
+              stream: true,
+              history: widgetHistory.slice(0, -2).slice(-6),
+              rag_context: hasRag ? resData.rag_context.slice(0, 4) : [],
+              evidences: Array.isArray(resData.evidences) ? resData.evidences.slice(0, 3) : [],
+            }),
+          });
+          if (cfRes.ok && cfRes.body && streamSlot) {
+            const reader = cfRes.body.getReader();
+            const dec = new TextDecoder();
+            let buf = '';
+            let out = '';
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              buf += dec.decode(value, { stream: true });
+              const lines = buf.split(/\r?\n/);
+              buf = lines.pop() || '';
+              for (const ln of lines) {
+                const t = ln.trim();
+                if (!t.startsWith('data:')) continue;
+                const p = t.slice(5).trim();
+                if (p === '[DONE]') continue;
+                try {
+                  const j = JSON.parse(p);
+                  if (j.token) {
+                    out += j.token;
+                    streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
+                    msgsBox.scrollTop = msgsBox.scrollHeight;
+                  }
+                } catch (_) {}
+              }
+            }
+            if (out.trim() && widgetHistory.length) {
+              widgetHistory[widgetHistory.length - 1].text = out.trim().slice(0, 900);
+            }
+          }
+        } catch (_) {}
+      }
     } catch (_) {
       a.textContent = 'দুঃখিত, সংযোগে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';
     }
