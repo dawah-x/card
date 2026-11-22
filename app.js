@@ -138,13 +138,26 @@
   const syncCorpusBtn = document.getElementById('syncCorpusBtn');
   const mirasModal = document.getElementById('mirasModal');
   const tasbihModal = document.getElementById('tasbihModal');
+  const cmdModal = document.getElementById('cmdModal');
   const suggestDropdown = document.getElementById('suggestDropdown');
   const pubSourceSelect = document.getElementById('pubSourceSelect');
+  const scrollBottomBtn = document.getElementById('scrollBottomBtn');
+  const appShell = document.querySelector('.app-shell');
+  const appToast = document.getElementById('appToast');
 
   let activeSuggestItems = [];
   let activeSuggestIdx = -1;
   let activeReaderDoc = null;
   let activeReaderBaseHtml = '';
+  let toastTimer = null;
+
+  function showToast(msg) {
+    if (!appToast) return;
+    appToast.textContent = msg;
+    appToast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => appToast.classList.remove('show'), 2200);
+  }
 
   function hideSuggestions() {
     activeSuggestItems = [];
@@ -182,6 +195,7 @@
     if (quoteCardModal) quoteCardModal.classList.remove('open');
     if (mirasModal) mirasModal.classList.remove('open');
     if (tasbihModal) tasbihModal.classList.remove('open');
+    if (cmdModal) cmdModal.classList.remove('open');
     if (videoModal) {
       videoModal.classList.remove('open');
       if (videoModalIframe) videoModalIframe.src = '';
@@ -410,10 +424,25 @@
     if (copyBtn) {
       const payload = copyBtn.getAttribute('data-copy-answer');
       navigator.clipboard.writeText(payload).then(() => {
+        showToast('✓ কপি করা হয়েছে!');
         const orig = copyBtn.textContent;
-        copyBtn.textContent = '✓ কপি হয়েছে!';
-        setTimeout(() => (copyBtn.textContent = orig), 1800);
+        copyBtn.textContent = '✓ কপি!';
+        setTimeout(() => (copyBtn.textContent = orig), 1600);
       });
+      return;
+    }
+
+    const shareQBtn = e.target.closest('[data-share-q]');
+    if (shareQBtn) {
+      const qText = shareQBtn.getAttribute('data-share-q') || '';
+      const shareUrl = `${location.origin}${location.pathname}?q=${encodeURIComponent(qText)}`;
+      if (navigator.share && window.matchMedia('(max-width: 900px)').matches) {
+        navigator.share({ title: `DAWAH X AI — ${qText}`, url: shareUrl }).catch(() => {});
+      } else {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+          showToast('✓ প্রশ্নের সরাসরি লিংক কপি হয়েছে!');
+        });
+      }
       return;
     }
 
@@ -684,7 +713,10 @@
           (ev) => `
           <li class="dalil-item">
             <div>${formatRichText(ev.text)}</div>
-            <small>সূত্র: <a href="${escHtml(ev.dawahx_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold)">${escHtml(ev.source_name)} ↗</a></small>
+            <div class="dalil-item-head">
+              <small>সূত্র: <a href="${escHtml(ev.dawahx_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold)">${escHtml(ev.source_name)} ↗</a></small>
+              <button type="button" class="dalil-copy-btn" data-copy-answer="${escHtml(ev.text + ' — ' + ev.source_name)}">📋 দলিল কপি</button>
+            </div>
           </li>`
         )
         .join('');
@@ -746,7 +778,7 @@
       sourcesHtml = `
         <div class="sources-section">
           <div class="sec-heading">🔗 DAWAH X ওয়েবসাইটের মূল তথ্যসূত্র (${toBnNum(data.sources.length)}টি)</div>
-          <div class="sources-grid">${sCards}</div>
+          <div class="sources-grid ${data.sources.length >= 2 ? 'multi-src' : ''}">${sCards}</div>
         </div>`;
     }
 
@@ -893,6 +925,17 @@
         🖼 ফতোয়া কার্ড
       </button>`;
 
+    // Contextual Smart Built-in Tool CTA (Fara'id Miras, Prayer Times, Digital Tasbih)
+    let smartToolHtml = '';
+    const qContext = `${data.query || ''} ${data.headline || ''}`;
+    if (/(?:সম্পত্তি|মিরাস|ফারায়েয|ফারায়েজ|ওয়ারিশ|উত্তরাধিকার|তেজ্য|ত্যাজ্য)/u.test(qContext)) {
+      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-miras-modal="1">⚖️ কুরআনিক ফারায়েয / মিরাস ক্যালকুলেটরে অংশ হিসাব করুন ➔</button>`;
+    } else if (/(?:ওয়াক্ত|সাহরী|সেহরি|ইফতার|ফজরের\s*সময়|নামাজের\s*সময়)/u.test(qContext)) {
+      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-prayer-modal="1">🕌 ২৪ জেলার আজকের নামাজ, সেহরি ও ইফতারের সময়সূচি দেখুন ➔</button>`;
+    } else if (/(?:তাসবীহ|যিকির|জিকির|ইস্তিগফার|সুবহানাল্লাহ)/u.test(qContext)) {
+      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-tasbih-modal="1">📿 ডিজিটাল তাসবীহ ও যিকির কাউন্টার খুলুন ➔</button>`;
+    }
+
     card.innerHTML = `
       <div class="ai-meta-top">
         ${statusBadgeHtml}
@@ -906,6 +949,7 @@
         <strong class="verdict-lbl">সারসংক্ষেপ / মূল উত্তর:</strong>
         <span>${formatRichText(data.direct_answer)}</span>
       </div>
+      ${smartToolHtml}
       <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
       ${seriesHtml}
       ${dalilHtml}
@@ -918,9 +962,10 @@
         ${quoteCardBtnHtml}
         ${bookmarkBtnHtml}
         <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 কপি</button>
-        <a href="${escHtml(waShareUrl)}" target="_blank" rel="noopener noreferrer" class="mini-btn">📲 WhatsApp শেয়ার</a>
+        <button type="button" class="mini-btn" data-share-q="${escHtml(data.query || data.headline || '')}">🔗 লিংক শেয়ার</button>
+        <a href="${escHtml(waShareUrl)}" target="_blank" rel="noopener noreferrer" class="mini-btn">📲 WhatsApp</a>
         <a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="mini-btn">
-          ✉ DAWAH X টিমে প্রশ্ন পাঠান ↗
+          ✉ প্রশ্ন পাঠান ↗
         </a>
       </div>
     `;
@@ -1113,15 +1158,25 @@
     if (firstMark) firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
 
-  document.getElementById('drawerCopyLinkBtn')?.addEventListener('click', (e) => {
+  document.getElementById('drawerCopyLinkBtn')?.addEventListener('click', () => {
     const url = activeReaderDoc?.share_url || activeReaderDoc?.dawahx_url || document.getElementById('drawerExternalUrl')?.href;
     if (!url) return;
-    navigator.clipboard.writeText(url).then(() => {
-      const btn = e.currentTarget;
-      const orig = btn.textContent;
-      btn.textContent = '✓ লিংক কপি!';
-      setTimeout(() => (btn.textContent = orig), 1800);
-    });
+    navigator.clipboard.writeText(url).then(() => showToast('✓ লেখার লিংক কপি হয়েছে!'));
+  });
+
+  document.getElementById('drawerFontBtn')?.addEventListener('click', () => {
+    fontSizeBtn?.click();
+    showToast('✓ লেখার আকার পরিবর্তন হয়েছে');
+  });
+
+  // Live Reading Progress Bar inside Slide-Over Article Reader
+  const drawerBodyEl = document.getElementById('drawerBody');
+  const readerProgressEl = document.getElementById('readerProgressBar');
+  drawerBodyEl?.addEventListener('scroll', () => {
+    if (!readerProgressEl) return;
+    const maxScroll = drawerBodyEl.scrollHeight - drawerBodyEl.clientHeight;
+    const pct = maxScroll > 10 ? Math.min(100, Math.round((drawerBodyEl.scrollTop / maxScroll) * 100)) : 100;
+    readerProgressEl.style.width = pct + '%';
   });
 
   document.getElementById('drawerMakeCardBtn')?.addEventListener('click', () => {
@@ -1509,6 +1564,16 @@
   });
 
   document.addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      openCmdPalette();
+      return;
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && window.innerWidth > 900) {
+      e.preventDefault();
+      toggleDesktopSidebar();
+      return;
+    }
     if (e.key === 'Escape') {
       stopSpeech();
       closeOverlays();
@@ -1524,6 +1589,161 @@
       e.preventDefault();
       questionInput.focus();
     }
+  });
+
+  // ===== v6.0 Laptop Collapsible Sidebar, Mobile Header New Chat, Scroll-to-Bottom, Swipe Gestures & Command Palette =====
+  const SIDEBAR_COLLAPSED_KEY = 'dawahx_sidebar_collapsed_v6';
+  function toggleDesktopSidebar(forceVal) {
+    if (!appShell) return;
+    const next = typeof forceVal === 'boolean' ? forceVal : !appShell.classList.contains('sidebar-collapsed');
+    appShell.classList.toggle('sidebar-collapsed', next);
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? '1' : '0');
+  }
+  if (localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1' && window.innerWidth > 900) {
+    appShell?.classList.add('sidebar-collapsed');
+  }
+  document.getElementById('desktopSidebarToggleBtn')?.addEventListener('click', () => toggleDesktopSidebar());
+  document.getElementById('mobileNewChatBtn')?.addEventListener('click', () => {
+    newChatBtn.click();
+    showToast('নতুন কথোপকথন শুরু হয়েছে');
+  });
+
+  // Floating Scroll-to-Bottom Pill
+  chatScroll.addEventListener('scroll', () => {
+    if (!scrollBottomBtn) return;
+    const distFromBottom = chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight;
+    scrollBottomBtn.style.display = distFromBottom > 260 ? 'inline-flex' : 'none';
+  });
+  scrollBottomBtn?.addEventListener('click', () => {
+    chatScroll.scrollTo({ top: chatScroll.scrollHeight, behavior: 'smooth' });
+  });
+
+  // Smartphone Touch Swipe Gestures (Edge-swipe right opens sidebar, swipe left closes sidebar, swipe right closes reader)
+  let touchStartX = 0;
+  let touchStartY = 0;
+  document.addEventListener(
+    'touchstart',
+    (e) => {
+      if (!e.touches || e.touches.length !== 1) return;
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    },
+    { passive: true }
+  );
+  document.addEventListener(
+    'touchend',
+    (e) => {
+      if (!e.changedTouches || e.changedTouches.length !== 1 || window.innerWidth > 900) return;
+      const dx = e.changedTouches[0].clientX - touchStartX;
+      const dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) < 62 || Math.abs(dy) > Math.abs(dx) * 0.65) return;
+
+      if (dx > 62 && touchStartX <= 26 && !sidebar.classList.contains('open') && !readerDrawer.classList.contains('open')) {
+        sidebar.classList.add('open');
+        backdrop.classList.add('open');
+      } else if (dx < -62 && sidebar.classList.contains('open')) {
+        closeOverlays();
+      } else if (dx > 75 && readerDrawer.classList.contains('open')) {
+        closeOverlays();
+      }
+    },
+    { passive: true }
+  );
+
+  // Command Palette (Ctrl+K / Mobile Bolt)
+  const CMD_BASE_ACTIONS = [
+    { label: '🕌 ২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার', meta: 'টুল', run: () => openPrayerModal() },
+    { label: '⚖️ কুরআনিক ফারায়েয / মিরাস (উত্তরাধিকার) ক্যালকুলেটর', meta: 'টুল', run: () => openMirasModal() },
+    { label: '📿 ডিজিটাল তাসবীহ ও মাসনূন যিকির কাউন্টার', meta: 'টুল', run: () => openTasbihModal() },
+    { label: '＋ নতুন প্রশ্ন / কথোপকথন শুরু করুন', meta: 'অ্যাকশন', run: () => newChatBtn.click() },
+    { label: '☀️ দিন / রাত থিম পরিবর্তন করুন', meta: 'সেটিংস', run: () => themeToggleBtn?.click() },
+    { label: 'অ+ লেখার আকার বড় / ছোট করুন', meta: 'সেটিংস', run: () => fontSizeBtn?.click() },
+    { label: '🆕 সদ্য প্রকাশিত লেখা ও ভিডিও দেখুন', meta: 'লাইভ', run: () => submitQuestion('আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?') },
+    { label: '🧮 ৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?', meta: 'যাকাত', run: () => submitQuestion('৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?') },
+    { label: '🎯 একটা ইসলামিক কুইজ ধরো', meta: 'কুইজ', run: () => submitQuestion('একটা ইসলামিক কুইজ ধরো') },
+    { label: '📚 শুধু মাসিক আত-তাহরীক থেকে উত্তর ফিল্টার করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = 'at'; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: মাসিক আত-তাহরীক'); } } },
+    { label: '📚 শুধু মাসিক আল-ইতিছাম থেকে উত্তর ফিল্টার করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = 'ai'; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: মাসিক আল-ইতিছাম'); } } },
+    { label: '📚 সব উৎস পুনরায় চালু করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = ''; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: সব উৎস'); } } },
+  ];
+  let currentCmdList = [];
+
+  function renderCmdResults(queryText = '') {
+    const listEl = document.getElementById('cmdResultsList');
+    if (!listEl) return;
+    const q = String(queryText || '').trim().toLowerCase();
+    const dynamicItems = [];
+
+    // Include saved bookmarks
+    for (const bm of loadStoredJson(BOOKMARKS_KEY, []).slice(0, 6)) {
+      dynamicItems.push({
+        label: `🔖 ${bm.title}`,
+        meta: 'সংরক্ষিত',
+        run: () => openInlineReader(bm.key),
+      });
+    }
+    // Include instant AI suggestions if user typed >=2 chars
+    if (q.length >= 2 && window.DawahXBrowserAI && window.DawahXBrowserAI.suggest) {
+      for (const sg of window.DawahXBrowserAI.suggest(q, 5)) {
+        dynamicItems.push({
+          label: `🔍 ${sg}`,
+          meta: 'প্রশ্ন করুন',
+          run: () => submitQuestion(sg),
+        });
+      }
+    }
+
+    const pool = [...CMD_BASE_ACTIONS, ...dynamicItems];
+    currentCmdList = q
+      ? pool.filter((item) => item.label.toLowerCase().includes(q) || item.meta.toLowerCase().includes(q))
+      : pool;
+
+    if (q.length >= 2) {
+      currentCmdList.push({
+        label: `➤ সরাসরি জিজ্ঞেস করুন: “${queryText.trim()}”`,
+        meta: 'DAWAH X AI',
+        run: () => submitQuestion(queryText.trim()),
+      });
+    }
+
+    listEl.innerHTML = currentCmdList
+      .slice(0, 12)
+      .map(
+        (it, idx) => `
+        <button type="button" class="cmd-item" data-cmd-idx="${idx}">
+          <span>${escHtml(it.label)}</span>
+          <small>${escHtml(it.meta)}</small>
+        </button>`
+      )
+      .join('');
+  }
+
+  function openCmdPalette() {
+    closeOverlays();
+    if (!cmdModal) return;
+    const inp = document.getElementById('cmdSearchInput');
+    if (inp) inp.value = '';
+    renderCmdResults('');
+    cmdModal.classList.add('open');
+    backdrop.classList.add('open');
+    setTimeout(() => inp?.focus(), 40);
+  }
+
+  document.getElementById('cmdPaletteBtn')?.addEventListener('click', openCmdPalette);
+  document.getElementById('cmdSearchInput')?.addEventListener('input', (e) => renderCmdResults(e.target.value));
+  document.getElementById('cmdSearchInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && currentCmdList.length > 0) {
+      e.preventDefault();
+      const action = currentCmdList[0];
+      closeOverlays();
+      action.run();
+    }
+  });
+  document.getElementById('cmdResultsList')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-cmd-idx]');
+    if (!btn) return;
+    const action = currentCmdList[Number(btn.getAttribute('data-cmd-idx'))];
+    closeOverlays();
+    if (action) action.run();
   });
 
   // ===== v5.0 Qur'anic Fara'id / Miras Calculator Modal =====
