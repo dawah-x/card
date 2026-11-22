@@ -9,3 +9,16 @@ binding = "ASSETS"
 
 [ai]
 binding = "AI"
+
+# Secondary Cloudflare Worker environment ("dawahx-assistant")
+# Deploy command in Cloudflare Dashboard: npx wrangler deploy --name dawahx-assistant
+[env.assistant]
+name = "dawahx-assistant"
+workers_dev = true
+
+[env.assistant.assets]
+directory = "."
+binding = "ASSETS"
+
+[env.assistant.ai]
+binding = "AI"
