@@ -535,13 +535,16 @@
         .map((s) => `<a class="src-link" href="${esc(s.dawahx_url)}" target="_blank" rel="noopener">📄 ${esc(s.title)} ↗</a>`)
         .join('');
 
-      if (resData.is_chat || resData.status === 'conversational') {
+      const isWebFallback = resData.status === 'web_fallback' || resData.status === 'not_found';
+
+      if ((resData.is_chat || resData.status === 'conversational') && !isWebFallback) {
         a.innerHTML = `<div class="w-stream">${esc(resData.direct_answer || '')}</div>${links}`;
       } else {
         a.innerHTML = `
           <h4>${esc(resData.headline || 'উত্তর')}</h4>
-          <div class="verdict w-stream">${esc(resData.direct_answer || '')}</div>
-          ${links || `<a class="src-link" href="${SITE_BASE}/ask.html" target="_blank">✉ DAWAH X টিমে প্রশ্ন পাঠান ↗</a>`}
+          <div class="verdict w-stream">${esc(resData.direct_answer || (isWebFallback ? 'নির্ভরযোগ্য ওয়েবসাইট থেকে উত্তর খোঁজা হচ্ছে...' : ''))}</div>
+          <div class="w-web-links"></div>
+          ${links}
         `;
       }
       msgsBox.scrollTop = msgsBox.scrollHeight;
@@ -549,13 +552,13 @@
       // Live Cloudflare Workers AI stream inside floating widget when connected (never overwrite deterministic tools!)
       if (detectedWorkerBase && !resData.is_deterministic_tool) {
         const streamSlot = a.querySelector('.w-stream');
+        const webLinksSlot = a.querySelector('.w-web-links');
         const hasRag = Array.isArray(resData.rag_context) && resData.rag_context.length > 0;
-        const mode =
-          resData.status === 'not_found'
-            ? 'not_found_islamic'
-            : hasRag && !resData.is_chat
-              ? 'grounded'
-              : 'chat';
+        const mode = isWebFallback
+          ? 'web_search'
+          : hasRag && !resData.is_chat
+            ? 'grounded'
+            : 'chat';
         try {
           const basePayload = {
             question: q,
@@ -585,6 +588,15 @@
               if (!p || p === '[DONE]') return;
               try {
                 const j = JSON.parse(p);
+                if (Array.isArray(j.web_sources) && j.web_sources.length && webLinksSlot) {
+                  webLinksSlot.innerHTML = j.web_sources
+                    .slice(0, 3)
+                    .map(
+                      (ws) =>
+                        `<a class="src-link" href="${esc(ws.url)}" target="_blank" rel="noopener noreferrer">🌐 ${esc(ws.title || ws.domain)} ↗</a>`
+                    )
+                    .join('');
+                }
                 if (j.token) onTok(j.token);
               } catch (_) {}
             };

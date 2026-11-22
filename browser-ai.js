@@ -2742,16 +2742,16 @@
     },
 
     _notFoundPayload(question, partialDocs, videos, t0) {
-      const validPartials = partialDocs.filter((c) => c.confidence >= 0.16);
+      const validPartials = partialDocs.filter((c) => c.confidence >= 0.22);
       return {
-        status: 'not_found',
-        is_chat: true,
+        status: 'web_fallback',
+        is_chat: false,
         query: question,
-        headline: '',
-        direct_answer:
-          'আপনার কথাটির জন্য ধন্যবাদ! আমি আপনার সাথে স্বাভাবিকভাবে যেকোনো বিষয়ে কথাবার্তা বলতে পারি; তবে কোনো নির্দিষ্ট মাসআলা বা তথ্যগত প্রশ্নের ক্ষেত্রে আমি শুধুমাত্র **DAWAH X**-এর যাচাইকৃত সংগ্রহ থেকেই উত্তর দিই—যাতে কখনো মনগড়া বা ভুল ফতোয়া চলে না যায়।',
+        headline: summarizeLongHeadline(question),
+        primary_source_name: 'ওয়েব ও প্রামাণ্য সূত্র',
+        direct_answer: '',
         explanation_paragraphs: [
-          'এই নির্দিষ্ট প্রশ্নটির সরাসরি উত্তর DAWAH X-এর বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। আপনি চাইলে প্রশ্নটি একটু ভিন্নভাবে লিখতে পারেন, নিচের বাটনে ক্লিক করে সরাসরি **DAWAH X টিমে** পাঠাতে পারেন, অথবা আমার সাথে অন্য যেকোনো বিষয়ে আলাপ চালিয়ে যেতে পারেন!',
+          'এই প্রশ্নটির সরাসরি উত্তর DAWAH X-এর স্থানীয় অফলাইন ইনডেক্সে নেই। ইন্টারনেট সংযোগ চালু থাকলে স্বয়ংক্রিয়ভাবে অন্যান্য নির্ভরযোগ্য ওয়েবসাইট ও প্রামাণ্য সূত্র থেকে উত্তর প্রদর্শিত হবে, অথবা আপনি সরাসরি DAWAH X টিমেও প্রশ্নটি পাঠাতে পারেন।',
         ],
         additional_perspectives: [],
         evidences: [],
@@ -2770,11 +2770,7 @@
           confidence: s.confidence,
         })),
         videos: validPartials.length ? videos.slice(0, 2) : [],
-        follow_ups: [
-          'কুরআন ও সুন্নাহর আলোকে তাওহীদের গুরুত্ব কী?',
-          'সালাত আদায়ের সহীহ নিয়ম কী?',
-          'আল্লাহর রহমত ও তওবা কবুলের শর্ত কী?',
-        ],
+        follow_ups: [],
         confidence: validPartials[0] ? validPartials[0].confidence : 0,
         latency_ms: Math.round(performance.now() - t0),
         ask_team_url: `${SITE_URL}/ask.html`,
