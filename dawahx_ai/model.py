@@ -17,6 +17,7 @@ import json
 import math
 import pickle
 import random
+import re
 import sqlite3
 import time
 from collections import Counter
@@ -721,7 +722,7 @@ class DawahXAIModel:
                     "channel_title": vr["channel_title"],
                     "published_at": vr["published_at"][:10] if vr["published_at"] else "",
                     "score": round(float(scores[vi]), 2),
-                    "dawahx_url": f"{DAWAHX_SITE_URL}/read.html?v={vid_id}",
+                    "dawahx_url": f"{DAWAHX_SITE_URL}/videos.html?v={vid_id}",
                     "thumbnail": f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg",
                 }
             )
@@ -738,7 +739,38 @@ class DawahXAIModel:
             self.load_or_train()
 
         t0 = time.perf_counter()
-        augmented_query, mapped_terms = translate_banglish_and_english(query)
+        # Guard: Pure secular live-utility / sports-score / fare / coding / recipe queries without Islamic framing
+        is_secular_util = bool(
+            re.search(
+                r"(?:ম্যাচের?\s*স্কোর|খেলার?\s*স্কোর|লাইভ\s*স্কোর|(?:ট্রেনের?|বাসের?|বিমানের?)\s*(?:টিকেট\s*|টিকিট\s*)?ভাড়া\s*কত|আবহাওয়া\s*কেমন|তাপমাত্রা\s*কত|(?:বিরিয়ানি|খিচুড়ি|কেক|রান্না\s*করার)\s*রেসিপি|(?:পাইথন|পাইথনে|জাভাস্ক্রিপ্ট|রিয়্যাক্ট|প্রোগ্রামিং).*কোড)",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        has_islamic_frame = bool(
+            re.search(
+                r"(?:ইসলাম|শরীআত|শরীয়ত|জায়েয|জায়েজ|হালাল|হারাম|গুনাহ|পাপ|সওয়াব|ছওয়াব|বিধান|হুকুম|মাসআলা|ফতোয়া|কুরআন|হাদীস|হাদিস|সুন্নাত|সুন্নাহ)",
+                query,
+                re.IGNORECASE,
+            )
+        )
+        if is_secular_util and not has_islamic_frame:
+            return {
+                "candidates": [],
+                "videos": [],
+                "core_tokens": [],
+                "expanded_tokens": [],
+                "mapped_terms": [],
+                "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+            }
+
+        clean_query = re.sub(
+            r"^\s*(?:আসসালামু\s*আলাইকুম|আস-সালামু\s*আলাইকুম|সালাম|assalamu\s*alaikum|salam)(?:\s+ওয়া\s*রাহমাতুল্লাহ(?:ি\s*ওয়া\s*বারাকাতুহু?)?)?[\s,।!?\-:]+",
+            " ",
+            query,
+            flags=re.IGNORECASE,
+        )
+        augmented_query, mapped_terms = translate_banglish_and_english(clean_query)
         orig_tokens = tokenize_folded(augmented_query, stem=True)
 
         # Keep core content tokens (excluding generic stop/question words)

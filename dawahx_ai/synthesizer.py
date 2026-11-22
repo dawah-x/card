@@ -196,10 +196,17 @@ def synthesize_response(
     ):
         prose_doc = candidates[1]
 
-    selected_paras = _select_best_paragraphs(prose_doc, core_set, expanded_set, max_paras=4, max_total_chars=1500)
+    selected_paras = _select_best_paragraphs(prose_doc, core_set, expanded_set, max_paras=5, max_total_chars=1650)
 
     direct_answer = selected_paras[0] if selected_paras else _trim_cleanly(prose_doc["opening_ruling"], 500)
-    explanation_paragraphs = selected_paras[1:] if len(selected_paras) > 1 else []
+    exp_start = 1
+    while exp_start < len(selected_paras) and (
+        len(direct_answer) < 85 or direct_answer.rstrip().endswith((":", "ঃ", "-", "–", "—"))
+    ):
+        direct_answer = f"{direct_answer} {selected_paras[exp_start]}".strip()
+        exp_start += 1
+    direct_answer = _trim_cleanly(direct_answer, 580)
+    explanation_paragraphs = selected_paras[exp_start : exp_start + 3]
 
     # Gather corroborating perspectives from rank #2 and #3 if genuinely relevant to the query
     additional_perspectives: List[Dict[str, Any]] = []

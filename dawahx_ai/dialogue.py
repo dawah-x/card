@@ -8,6 +8,7 @@ follow-ups — while keeping all Islamic rulings 100% grounded in DAWAH X withou
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import math
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -69,6 +70,88 @@ def _dhaka_now_text() -> str:
     time_str = _to_bn_digits(f"{hour12}:{now.minute:02d}")
     date_str = f"{_to_bn_digits(now.day)} {BN_MONTHS[now.month]}, {_to_bn_digits(now.year)}"
     return f"এখন বাংলাদেশ সময় **{period} {time_str} মিনিট** — আজ **{weekday}, {date_str}**।"
+
+
+BD_CITIES = [
+    ("dhaka", "ঢাকা", 23.7104, 90.4074, ("ঢাকা", "dhaka", "ঢাকায়")),
+    ("chattogram", "চট্টগ্রাম", 22.3569, 91.7832, ("চট্টগ্রাম", "চট্টগ্রামে", "চিটাগং", "chittagong", "chattogram")),
+    ("sylhet", "সিলেট", 24.8949, 91.8687, ("সিলেট", "সিলেটে", "sylhet")),
+    ("rajshahi", "রাজশাহী", 24.3745, 88.6042, ("রাজশাহী", "রাজশাহীতে", "rajshahi")),
+    ("khulna", "খুলনা", 22.8456, 89.5403, ("খুলনা", "খুলনায়", "khulna")),
+    ("barishal", "বরিশাল", 22.7010, 90.3535, ("বরিশাল", "বরিশালে", "barishal", "barisal")),
+    ("rangpur", "রংপুর", 25.7439, 89.2752, ("রংপুর", "রংপুরে", "rangpur")),
+    ("mymensingh", "ময়মনসিংহ", 24.7471, 90.4203, ("ময়মনসিংহ", "ময়মনসিংহে", "mymensingh")),
+    ("cumilla", "কুমিল্লা", 23.4607, 91.1809, ("কুমিল্লা", "কুমিল্লায়", "comilla", "cumilla")),
+    ("coxsbazar", "কক্সবাজার", 21.4272, 92.0058, ("কক্সবাজার", "coxsbazar")),
+    ("bogura", "বগুড়া", 24.8465, 89.3773, ("বগুড়া", "bogra", "bogura")),
+]
+
+
+def compute_prayer_schedule_bd(text_or_city: str = "dhaka") -> Dict[str, Any]:
+    low = fold_bn(text_or_city or "")
+    chosen = BD_CITIES[0]
+    for c in BD_CITIES:
+        if c[0] == text_or_city or any(fold_bn(al) in low for al in c[4]):
+            chosen = c
+            break
+    _, city_bn, lat, lon, _ = chosen
+    now = datetime.now(timezone(timedelta(hours=6)))
+    Y, M, D = now.year, now.month, now.day
+    a = (14 - M) // 12
+    y = Y + 4800 - a
+    m = M + 12 * a - 3
+    jdn = D + (153 * m + 2) // 5 + 365 * y + y // 4 - y // 100 + y // 400 - 32045
+    d = (jdn - 0.25) - 2451545.0
+    rad = math.pi / 180.0
+    deg = 180.0 / math.pi
+    g = (357.529 + 0.98560028 * d) % 360.0
+    q = (280.459 + 0.98564736 * d) % 360.0
+    L = (q + 1.915 * math.sin(g * rad) + 0.020 * math.sin(2 * g * rad)) % 360.0
+    e = 23.439 - 0.00000036 * d
+    ra = math.atan2(math.cos(e * rad) * math.sin(L * rad), math.cos(L * rad)) * deg / 15.0
+    decl = math.asin(math.sin(e * rad) * math.sin(L * rad)) * deg
+    eqt = q / 15.0 - ((ra + 24.0) % 24.0)
+    if eqt > 12:
+        eqt -= 24
+    elif eqt < -12:
+        eqt += 24
+    dhuhr = 18.0 - lon / 15.0 - eqt
+
+    def _ha(alt: float) -> float:
+        return math.acos((math.sin(alt * rad) - math.sin(lat * rad) * math.sin(decl * rad)) / (math.cos(lat * rad) * math.cos(decl * rad))) * deg / 15.0
+
+    def _asr(sh: float) -> float:
+        alt = math.atan(1.0 / (sh + math.tan(abs(lat - decl) * rad))) * deg
+        return _ha(alt)
+
+    def _fmt(dec_h: float) -> str:
+        tot = int(round(dec_h * 60)) % 1440
+        h24, mm = divmod(tot, 60)
+        h12 = h24 % 12 or 12
+        p = "ভোর" if 4 <= h24 < 6 else "সকাল" if 6 <= h24 < 12 else "দুপুর" if 12 <= h24 < 15 else "বিকেল" if 15 <= h24 < 18 else "সন্ধ্যা" if 18 <= h24 < 20 else "রাত"
+        return f"{p} {_to_bn_digits(h12)}:{_to_bn_digits(f'{mm:02d}')}"
+
+    return {
+        "city": city_bn,
+        "sehri": _fmt(dhuhr - _ha(-18.0) - 2.0 / 60.0),
+        "fajr": _fmt(dhuhr - _ha(-18.0)),
+        "sunrise": _fmt(dhuhr - _ha(-0.833)),
+        "dhuhr": _fmt(dhuhr + 1.0 / 60.0),
+        "asr": _fmt(dhuhr + _asr(1.0)),
+        "asr_hanafi": _fmt(dhuhr + _asr(2.0)),
+        "maghrib": _fmt(dhuhr + _ha(-0.833)),
+        "isha": _fmt(dhuhr + _ha(-18.0)),
+    }
+
+
+_PRAYER_TIME_RE = re.compile(
+    r"(?:নামাজের\s*সময়(?:সূচ[িী])?|সালাতের\s*সময়(?:সূচ[িী])?|আজকের?\s*(?:নামাজের|সালাতের|ওয়াক্ত)|"
+    r"(?:ফজর|ফজরের|যোহর|যোহরের|আসর|আসরের|মাগরিব|মাগরিবের|এশা|এশার)\s*(?:ওয়াক্ত|আযান|আজান|সময়|কয়টায়|কখন)|"
+    r"ইফতার\s*(?:কয়টায়|কখন)|সেহরি(?:র)?\s*(?:শেষ\s*সময়|কখন|কয়টায়)|prayer\s*times?|namaz\s*time|iftar\s*time)",
+    re.IGNORECASE,
+)
+_FIQH_GUARD_RE = re.compile(r"(?:কাযা|ক্বাযা|কাজা|ছুটে\s*গেলে|ভুলে|রাকআত|রাকাত|সুন্নাত|নফল|সিজদা|ওযু|গোসল|ভঙ্গ|জায়েয|হারাম|বিধান|মাসআলা|নিয়ম)", re.IGNORECASE)
+_QUIZ_REQ_RE = re.compile(r"^\s*(?:আমাকে\s*)?(?:একটা\s*|আরেকটা\s*|নতুন\s*)?(?:ইসলামিক\s*)?(?:কুইজ\s*(?:ধরো|দাও|খেলব)|ধাঁধা\s*ধরো|quiz\s*me|islamic\s*quiz)[।!?.,\s]*$", re.IGNORECASE)
 
 
 # Regexes carefully anchored/scoped so genuine Islamic questions still go to DAWAH X retrieval
@@ -256,6 +339,48 @@ def handle_dialogue_turn(
             "latency_ms": 0.6,
             "ask_team_url": f"{DAWAHX_SITE_URL}/ask.html",
         }
+
+    # 0. Live Prayer, Sehri & Iftar Schedule & Zakat Calculator & Quiz
+    if _PRAYER_TIME_RE.search(q) and not _FIQH_GUARD_RE.search(q):
+        sc = compute_prayer_schedule_bd(q)
+        return _chat_payload(
+            f"**{sc['city']}** জেলার আজকের নামাজ, সেহরি ও ইফতারের সময়সূচি (করাচি ১৮° পদ্ধতি):",
+            [
+                f"• **সেহরির শেষ সময়:** {sc['sehri']}\n• **ফজর শুরু:** {sc['fajr']} *(সূর্যোদয়: {sc['sunrise']})*\n"
+                f"• **যোহর:** {sc['dhuhr']}\n• **আসর:** {sc['asr']} *(হানাফী মতে: {sc['asr_hanafi']})*\n"
+                f"• **মাগরিব / ইফতার:** {sc['maghrib']}\n• **এশা:** {sc['isha']}"
+            ],
+            follow_ups=["আউয়াল ওয়াক্তে সালাত আদায়ের ফযীলত কী?", "ফজরের সালাত কাযা হলে কখন পড়তে হবে?"],
+        )
+
+    if ("জাকাত" in fold_bn(q) or "zakat" in q.lower()) and re.search(r"(\d|[০-৯])", q):
+        en_q = "".join(str(BN_DIGITS.index(c)) if c in BN_DIGITS else c for c in q).replace(",", "")
+        m_num = re.search(r"(\d+(?:\.\d+)?)\s*(কোটি|crore|লক্ষ|লাখ|lakh|lac|হাজার|thousand)?", en_q, re.IGNORECASE)
+        if m_num:
+            base = float(m_num.group(1))
+            unit = (m_num.group(2) or "").lower()
+            if unit in ("কোটি", "crore"):
+                base *= 10_000_000
+            elif unit in ("লক্ষ", "লাখ", "lakh", "lac"):
+                base *= 100_000
+            elif unit in ("হাজার", "thousand"):
+                base *= 1_000
+            if base >= 500:
+                zakat_amt = round(base * 0.025, 2)
+                b_str = _to_bn_digits(f"{int(base):,}")
+                z_str = _to_bn_digits(f"{int(zakat_amt):,}" if zakat_amt.is_integer() else f"{zakat_amt:,.2f}")
+                return _chat_payload(
+                    f"হিসাব অনুযায়ী আপনার যদি **{b_str} টাকা** যাকাতযোগ্য সম্পদ নিসাব অতিক্রম করে পূর্ণ ১ চান্দ্র বছর স্থায়ী থাকে, তবে **২.৫%** হারে প্রদেয় যাকাত হবে: **{z_str} টাকা**।",
+                    ["স্বর্ণের নিসাব সাড়ে ৭ ভরি (৮৫ গ্রাম) এবং রৌপ্যের নিসাব সাড়ে ৫২ ভরি (৫৯৫ গ্রাম) বা সমমূল্যের নগদ অর্থ ও ব্যবসায়িক পণ্য।"],
+                    follow_ups=["স্বর্ণ ও রৌপ্যের যাকাত আদায়ের নিয়ম কী?", "কোন কোন খাতে যাকাতের অর্থ ব্যয় করা ফরয?"],
+                )
+
+    if _QUIZ_REQ_RE.match(q):
+        return _chat_payload(
+            f"দারুণ{name_tag}! আপনার জন্য একটি ইসলামিক কুইজ:\n\n**প্রশ্ন:** পবিত্র কুরআনের সবচেয়ে মর্যাদাপূর্ণ আয়াত কোনটি?\nক) সূরা ফাতিহার প্রথম আয়াত\nখ) আয়াতুল কুরসী (সূরা বাকারাহ ২৫৫)\nগ) সূরা ইখলাসের প্রথম আয়াত\nঘ) সূরা হাশরের শেষ আয়াত",
+            ["ক/খ/গ/ঘ লিখে বা অপশনে ক্লিক করে উত্তর দিন!"],
+            follow_ups=["ক) সূরা ফাতিহার প্রথম আয়াত", "খ) আয়াতুল কুরসী (সূরা বাকারাহ ২৫৫)", "গ) সূরা ইখলাসের প্রথম আয়াত", "ঘ) সূরা হাশরের শেষ আয়াত"],
+        )
 
     # 1. Salam / Hello
     if _SALAM_RE.match(q):

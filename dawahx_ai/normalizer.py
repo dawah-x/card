@@ -137,7 +137,13 @@ RAW_SYNONYM_GROUPS: List[List[str]] = [
     ["ওমরা", "উমরা", "ওমরাহ", "উমরাহ"],
     ["মসজিদ", "মাসজিদ"],
     ["বিতর", "বিতির", "বেতের"],
-    ["তারাবি", "তারাবীহ", "তারাবিহ", "কিয়ামুল লাইল", "তাহাজ্জুদ"],
+    ["তারাবি", "তারাবীহ", "তারাবিহ"],
+    ["তাহাজ্জুদ", "কিয়ামুল লাইল"],
+    ["ভঙ্গ", "ভঙ্গের", "ভাঙ্গা", "ভাঙ্গার", "ভাঙা", "ভাঙার", "ভেঙে", "ভাঙে", "নষ্ট"],
+    ["আয়েশা", "আয়িশা"],
+    ["জানাযা", "জানাজা", "মাইয়্যেত"],
+    ["বিষন্নতা", "হতাশা", "দুশ্চিন্তা", "অশান্তি"],
+    ["বিবর্তনবাদ", "ডারউইনবাদ", "ডারউইন"],
     ["সেহরি", "সাহরি", "সাহারি", "সাহরী"],
     ["ইফতার", "ইফতারি"],
     ["বিয়ে", "বিবাহ", "নিকাহ", "শাদি"],
@@ -408,6 +414,96 @@ BANGLISH_AND_EN_MAP: Dict[str, str] = {
     "rokto": "রক্ত ওযু",
     "ghush": "ঘুষ দুর্নীতি হারাম",
     "bribe": "ঘুষ দুর্নীতি",
+    "gusul": "গোসল ফরয",
+    "farz": "ফরয আবশ্যক",
+    "foroj": "ফরয আবশ্যক",
+    "karon": "কারণ ভঙ্গ",
+    "kaza": "কাযা ক্বাযা ছালাত",
+    "qaza": "কাযা ক্বাযা ছালাত",
+    "mon": "মন মনোযোগ খুশু",
+    "taka": "টাকা অর্থ সম্পদ",
+    "takar": "টাকা অর্থ সম্পদ",
+    "bkash": "বিকাশ ক্যাশব্যাক মোবাইল ব্যাংকিং",
+    "nagad": "নগদ বিকাশ ক্যাশব্যাক",
+    "cashback": "ক্যাশব্যাক ডিসকাউন্ট মূল্য ফেরত",
+    "bitcoin": "বিটকয়েন ক্রিপ্টোকারেন্সি মুদ্রা",
+    "crypto": "ক্রিপ্টোকারেন্সি বিটকয়েন",
+    "period": "হায়েয পিরিয়ড ঋতুস্রাব",
+    "hayez": "হায়েয পিরিয়ড ঋতুস্রাব",
+    "swapnodosh": "স্বপ্নদোষ বীর্য গোসল ছিয়াম",
+    "masturbation": "হস্তমৈথুন বীর্য গুনাহ",
+    "hostomoithun": "হস্তমৈথুন গুনাহ",
+    "kobor": "কবর আযাব যিয়ারত",
+    "azab": "আযাব শাস্তি",
+    "ajab": "আযাব শাস্তি",
+    "milad": "মীলাদ বিদআত কিয়াম",
+    "shobe": "শবে বরাত শাবান",
+    "borat": "শবে বরাত শাবান",
+    "kahf": "কাহফ সূরা",
+    "kursi": "আয়াতুল কুরসী",
+    "takhnu": "টাখনু গিরা প্যান্ট",
+    "pant": "প্যান্ট টাখনু পোশাক",
+    "chobi": "ছবি মূর্তি ভিডিও",
+    "sigaret": "সিগারেট ধূমপান",
+    # v5.0 Expanded Everyday Banglish & Medical/Fiqh Terms
+    "vul": "ভুল সাহু সিজদা",
+    "bhul": "ভুল সাহু সিজদা",
+    "sofor": "সফর মুসাফির ক্বছর",
+    "safar": "সফর মুসাফির ক্বছর",
+    "kosor": "ক্বছর কসর ছালাত",
+    "kasar": "ক্বছর কসর ছালাত",
+    "qasr": "ক্বছর কসর ছালাত",
+    "istikhara": "ইস্তেখারাহ ইস্তেখারা ছালাত",
+    "istekhara": "ইস্তেখারাহ ইস্তেখারা ছালাত",
+    "masbuk": "মাসবূক জামাআত ছালাত",
+    "eid": "ঈদ ছালাত তাকবীর",
+    "moja": "মোযা মাসাহ ওযূ",
+    "masah": "মাসাহ মোযা ওযূ",
+    "toothpaste": "টুথপেষ্ট ব্রাশ ছিয়াম",
+    "paste": "টুথপেষ্ট ব্রাশ ছিয়াম",
+    "brush": "ব্রাশ টুথপেষ্ট মিসওয়াক",
+    "miswak": "মিসওয়াক ব্রাশ",
+    "vag": "ভাগে শরীক পশুতে",
+    "bhag": "ভাগে শরীক পশুতে",
+    "goru": "গরু পশুতে সাত ভাগে",
+    "bidaat": "বিদআত সুন্নাত",
+    "bidah": "বিদআত সুন্নাত",
+    "bod": "বদনযর নযর",
+    "nojor": "বদনযর নযর রুকইয়াহ",
+    "nazar": "বদনযর নযর রুকইয়াহ",
+    "bacha": "রক্ষা প্রতিকার বাঁচার",
+    "bachar": "রক্ষা প্রতিকার বাঁচার",
+    "blood": "রক্ত রোগীকে দান",
+    "rokto": "রক্ত রক্তদান",
+    "donation": "দান রক্ত প্রতিস্থাপন",
+    "organ": "অঙ্গ প্রতিস্থাপন দান",
+    "abortion": "গর্ভপাত ভ্রূণ",
+    "gorvopat": "গর্ভপাত ভ্রূণ",
+    "shawwal": "শাওয়াল ছয়টি ছিয়াম",
+    "ashura": "আশূরা মুহাররম ছিয়াম",
+    "arafah": "আরাফা ছিয়াম",
+    "kulkhani": "কুলখানী চল্লিশা বিদআত",
+    "chollisha": "চল্লিশা কুলখানী বিদআত",
+    "dottok": "দত্তক পালক সন্তান",
+}
+
+BANGLISH_STOP_WORDS: Set[str] = {
+    "a", "e", "te", "er", "r", "ke", "re", "ta", "ti", "gulo", "gula", "ra", "der",
+    "ki", "kii", "keno", "kn", "kno", "kokhon", "kkhn", "kivabe", "kibhabe", "kemne", "kemon", "kmn",
+    "koto", "koy", "koyta", "kon", "konta", "kothay", "keu", "karo", "kake",
+    "hoy", "hoi", "hobe", "hole", "hoile", "howa", "howar", "hocche", "hoise", "hoyeche", "holo",
+    "jay", "jai", "jabe", "gele", "jawa", "pare", "parbo", "parbe", "pari", "para",
+    "kora", "korar", "kore", "korle", "korbo", "korben", "korte", "koren", "kori",
+    "dewa", "dewar", "dite", "dile", "debo", "newa", "newar", "nite", "nile", "nei", "nai",
+    "bola", "bolen", "bolo", "bolun", "ache", "ase", "thake", "thakle",
+    "pora", "porar", "pore", "porle", "porbo", "porte", "khawa", "khele", "khete",
+    "bose", "boshe", "utha", "uthte", "rakha", "rakhle", "rekhe",
+    "use", "using", "used", "vyabohar", "babohar",
+    "na", "noy", "naki", "ba", "othoba", "ebong", "ar", "kintu", "tobe", "jodi", "tahole",
+    "jonno", "jonyo", "theke", "sathe", "songe", "moddhe", "upor", "upore", "niche",
+    "ami", "amar", "amader", "apni", "apnar", "tumi", "tomar", "se", "tar", "tader", "amra",
+    "ekta", "ekti", "kichu", "sob", "shob", "onek", "khub", "beshi", "kom", "ektu",
+    "valo", "bhalo", "kharap", "uchit", "dorkar", "niyom", "bidhan", "hukum", "somporke", "bishoye",
 }
 
 # Generic Bengali & English stop/question words (should NOT carry primary topical weight alone)
@@ -429,15 +525,15 @@ GENERIC_QUERY_WORDS: Set[str] = {
         "প্রশ্ন", "উত্তর", "জানতে", "চাই", "বলুন", "জানান", "দয়া", "প্লিজ", "বিষয়ে", "সম্পর্কে", "ব্যাপারে",
         "বিধান", "হুকুম", "নিয়ম", "মাসআলা", "ফতোয়া", "দৃষ্টিতে", "মতে", "আলোকে",
         # Conversational greetings & polite address words inside questions
-        "আসসালামু", "আলাইকুম", "সালাম", "রাহমাতুল্লাহ", "রাহমাতুল্লাহি", "বারাকাতুহু", "ওয়া",
+        "আসসালামু", "আলাইকুম", "রাহমাতুল্লাহ", "রাহমাতুল্লাহি", "বারাকাতুহু", "ওয়া",
         "ভাই", "ভাইয়া", "বোন", "আপু", "হুজুর", "শায়খ", "শায়েখ", "স্যার", "বন্ধু",
-        "দয়া", "অনুগ্রহ", "প্লিজ", "একটু", "আচ্ছা", "হ্যালো", "হাই",
+        "দয়া", "অনুগ্রহ", "প্লিজ", "একটু", "আচ্ছা", "হ্যালো", "হাই", "ব্যবহার",
         # English / Banglish stop & address words
         "what", "why", "how", "when", "where", "who", "which", "is", "are", "was", "were",
         "do", "does", "did", "can", "could", "should", "would", "will", "in", "on", "of",
         "to", "for", "with", "about", "from", "the", "a", "an", "and", "or", "if", "it",
         "islam", "islamic", "muslim", "muslims", "ruling", "according", "tell", "me", "please",
-        "assalamu", "alaikum", "salam", "bhai", "bhaiya", "hujur", "sheikh", "hello", "hi", "hey",
+        "assalamu", "alaikum", "bhai", "bhaiya", "hujur", "sheikh", "hello", "hi", "hey",
     ]
 }
 
@@ -455,30 +551,59 @@ IDENTITY_PATTERNS = re.compile(
 )
 
 
+_BANGLISH_INFLECTIONS = ("gulo", "gula", "der", "ter", "tar", "tir", "er", "te", "ke", "ta", "ti", "ra", "e", "y", "r", "s", "ing")
+_COMPOUND_BN = [
+    ("পিতামাতা", "পিতা মাতা"),
+    ("মাবাবা", "মা বাবা পিতা মাতা"),
+    ("স্বামীস্ত্রী", "স্বামী স্ত্রী"),
+    ("ভাইবোন", "ভাই বোন"),
+    ("ছেলেমেয়ে", "ছেলে মেয়ে"),
+    ("শবেবরাত", "শবে বরাত"),
+    ("শবে কদর", "শবে কদর লাইলাতুল কদর"),
+    ("শবেকদর", "শবে কদর লাইলাতুল কদর"),
+    ("বদ নজর", "বদনযর নযর রুকইয়াহ"),
+    ("বদনজর", "বদনযর নযর রুকইয়াহ"),
+    ("রক্তদান", "রক্ত দান রোগীকে"),
+    ("অঙ্গদান", "অঙ্গ দান প্রতিস্থাপন"),
+    ("সিজদায়ে সাহু", "সাহু সিজদা"),
+    ("সিজদায়েসাহু", "সাহু সিজদা"),
+    ("ঈদুলফিতর", "ঈদুল ফিতর"),
+    ("ঈদুলআযহা", "ঈদুল আযহা"),
+]
+
+
 def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
-    """Expand Latin/Banglish/English tokens into Bengali Islamic domain terms."""
-    latin_words = re.findall(r"[a-zA-Z]{2,}", raw_query.lower())
-    if not latin_words:
-        return raw_query, []
-
+    """Replace known Latin/Banglish/English tokens (including inflections) with Bengali Islamic terms."""
     mapped_phrases: List[str] = []
-    for w in latin_words:
-        if w in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
-        elif w.endswith("s") and w[:-1] in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-1]])
-        elif w.endswith("ing") and w[:-3] in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-3]])
 
-    if mapped_phrases:
-        combined = raw_query + " " + " ".join(mapped_phrases)
-        return combined, mapped_phrases
-    return raw_query, []
+    def _repl(match: re.Match[str]) -> str:
+        raw_w = match.group(0)
+        low = raw_w.lower()
+        for w in (low, re.sub(r"([aeiou])\1+", r"\1", low)):
+            if w in BANGLISH_AND_EN_MAP:
+                mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
+                return f" {BANGLISH_AND_EN_MAP[w]} "
+            for suf in _BANGLISH_INFLECTIONS:
+                if len(w) - len(suf) >= 3 and w.endswith(suf):
+                    stem = w[: -len(suf)]
+                    if stem in BANGLISH_AND_EN_MAP:
+                        mapped_phrases.append(BANGLISH_AND_EN_MAP[stem])
+                        return f" {BANGLISH_AND_EN_MAP[stem]} "
+        if len(low) == 1 or low in BANGLISH_STOP_WORDS:
+            return " "
+        return raw_w
+
+    converted = re.sub(r"[a-zA-Z]+", _repl, raw_query)
+    return converted, mapped_phrases
 
 
 def tokenize_folded(text: str, stem: bool = True) -> List[str]:
     """Tokenize into folded (and optionally stemmed) Bengali/Latin tokens."""
-    folded = fold_bn(text)
+    expanded_text = text
+    for comp, split_form in _COMPOUND_BN:
+        if comp in expanded_text:
+            expanded_text = expanded_text.replace(comp, split_form)
+    folded = fold_bn(expanded_text)
     # Remove Arabic script tokens from Bengali lexical tokens
     folded = _ARABIC_RE.sub(" ", folded)
     raw_tokens = _TOKEN_RE.findall(folded)
