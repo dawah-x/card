@@ -6,6 +6,7 @@ from pathlib import Path
 import unittest
 
 from dawahx_ai import DAWAHX_SITE_URL
+from dawahx_ai.dialogue import augment_query_with_history, build_conversational_opening, handle_dialogue_turn
 from dawahx_ai.model import DawahXAIModel
 from dawahx_ai.normalizer import (
     detect_conversational_intent,
@@ -64,6 +65,47 @@ class TestDawahXAI(unittest.TestCase):
         ans = synthesize_response(q, ret, self.model.summary)
         self.assertEqual(ans["status"], "not_found")
         self.assertEqual(len(ans["videos"]), 0)
+
+    def test_natural_everyday_dialogue_and_memory(self) -> None:
+        summary = {"total_documents": 24207, "total_videos": 9310}
+        r_intro = handle_dialogue_turn("আমার নাম ইব্রাহিম", summary, history=[])
+        self.assertIsNotNone(r_intro)
+        self.assertIn("ইব্রাহিম", r_intro["direct_answer"])
+
+        hist = [{"role": "user", "text": "আমার নাম ইব্রাহিম"}]
+        r_how = handle_dialogue_turn("কেমন আছো তুমি?", summary, history=hist)
+        self.assertIsNotNone(r_how)
+        self.assertIn("আলহামদুলিল্লাহ", r_how["direct_answer"])
+
+        r_eat = handle_dialogue_turn("ভাত খাইছো?", summary, history=hist)
+        self.assertIsNotNone(r_eat)
+        self.assertIn("ইব্রাহিম", r_eat["direct_answer"])
+
+        r_sad = handle_dialogue_turn("আজকে মনটা খুব খারাপ", summary, history=hist)
+        self.assertIsNotNone(r_sad)
+        self.assertEqual(r_sad["status"], "conversational")
+
+        # Real Islamic question must NOT be intercepted as small talk
+        self.assertIsNone(handle_dialogue_turn("আসসালামু আলাইকুম, রোজা অবস্থায় ইনজেকশন নিলে কি রোজা ভাঙে?", summary, history=hist))
+        opening = build_conversational_opening("আসসালামু আলাইকুম, রোজায় ইনজেকশন নিলে কি রোজা ভাঙে?", "fatwa", "মাসিক আত-তাহরীক")
+        self.assertIn("ওয়া আলাইকুমুস সালাম", opening)
+
+        # Multi-turn follow-up augmentation
+        hist_with_ans = [
+            {
+                "role": "assistant",
+                "primary_title": "রোযা অবস্থায় ইনজেকশন নিলে রোযা ভঙ্গ হবে কি?",
+                "extra_body": "প্রথম অনুচ্ছেদ।\n\nদ্বিতীয় অনুচ্ছেদ বিস্তারিত ব্যাখ্যা।",
+                "evidences": [{"text": "হাদীস দলিল", "source_name": "আত-তাহরীক", "dawahx_url": DAWAHX_SITE_URL}],
+            }
+        ]
+        aug_q, used = augment_query_with_history("আর স্যালাইন নিলে?", history=hist_with_ans)
+        self.assertTrue(used)
+        self.assertIn("ইনজেকসন", aug_q)
+
+        elab = handle_dialogue_turn("আরেকটু বিস্তারিত বলো", summary, history=hist_with_ans)
+        self.assertIsNotNone(elab)
+        self.assertGreaterEqual(len(elab["explanation_paragraphs"]), 1)
 
 
 if __name__ == "__main__":

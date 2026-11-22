@@ -24,12 +24,14 @@
       /([\u0600-\u06FF][\u0600-\u06FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{3,})/g,
       '<span class="ar-inline">$1</span>'
     );
+    safe = safe.replace(/\n\n+/g, '<br><br>').replace(/\n/g, '<br>');
     return safe;
   }
 
   let activeFilter = 'all';
   let isAsking = false;
   let backendAvailable = null; // true = Python FastAPI, false = GitHub Pages Browser AI Engine
+  let chatHistory = [];
 
   // DOM References
   const sidebar = document.getElementById('sidebar');
@@ -83,8 +85,9 @@
 
   // New Chat / Reset
   newChatBtn.addEventListener('click', () => {
-    const msgs = chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .thinking-card');
+    const msgs = chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .msg-ai-chat, .thinking-card');
     msgs.forEach((el) => el.remove());
+    chatHistory = [];
     welcomeHero.style.display = '';
     questionInput.value = '';
     questionInput.style.height = 'auto';
@@ -190,21 +193,31 @@
     } catch (_) {}
   }
 
-  // Optional client-side Generative LLM enhancement (strictly grounded in DAWAH X RAG context)
+  // Optional client-side Generative LLM enhancement (supports natural conversation + strict DAWAH X grounding for Islamic rulings)
   async function maybeEnhanceWithBrowserLLM(question, data, targetEl) {
     const provider = localStorage.getItem('dawahx_llm_provider') || 'none';
     const apiKey = (localStorage.getItem('dawahx_llm_key') || '').trim();
-    if (provider === 'none' || !apiKey || !data.rag_context || !data.rag_context.length) return;
+    if (provider === 'none' || !apiKey) return;
 
-    const systemPrompt =
-      'তুমি DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/)-এর ইসলামিক প্রশ্নোত্তর সহকারী। ' +
-      'শুধুমাত্র নিচে প্রদত্ত DAWAH X-এর দলিল ও উদ্ধৃতি থেকে বাংলায় সুস্পষ্ট, বিনয়ী ও দলিলভিত্তিক উত্তর সাজিয়ে লেখো। ' +
-      'প্রদত্ত সূত্রের বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস বা মনগড়া তথ্য কখনোই যোগ করবে না। প্রতিটি তথ্যের পাশে [১], [২] সূত্র নম্বর উল্লেখ করো।';
+    const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
+    const recentTurns = chatHistory
+      .slice(-6)
+      .map((t) => `${t.role === 'user' ? 'ব্যবহারকারী' : 'DAWAH X AI'}: ${t.text}`)
+      .join('\n');
 
-    const contextStr = data.rag_context
-      .map((c) => `${c.citation}\n${c.content}`)
-      .join('\n\n---\n\n');
-    const userPrompt = `প্রশ্ন: ${question}\n\nDAWAH X থেকে প্রাপ্ত প্রাসঙ্গিক দলিল:\n${contextStr}`;
+    const systemPrompt = hasRag
+      ? 'তুমি DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/)-এর বন্ধুভাবাপন্ন ও বিনয়ী ইসলামিক সহকারী। ' +
+        'ব্যবহারকারীর সাথে স্বাভাবিক ও আন্তরিক বাংলায় কথা বলো এবং শুধুমাত্র নিচে প্রদত্ত DAWAH X-এর দলিল ও উদ্ধৃতি থেকে উত্তর সাজিয়ে লেখো। ' +
+        'প্রদত্ত সূত্রের বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস বা মনগড়া তথ্য কখনোই যোগ করবে না। প্রতিটি তথ্যের পাশে [১], [২] সূত্র নম্বর উল্লেখ করো।'
+      : 'তুমি DAWAH X-এর বন্ধুভাবাপন্ন বাংলা কথোপকথন সহকারী। ব্যবহারকারীর সাথে একদম স্বাভাবিক, আন্তরিক ও সুন্দর বাংলায় কথাবার্তা বলো। ' +
+        'তবে যদি ব্যবহারকারী কোনো শরঈ মাসআলা বা ফতোয়া জানতে চান যার DAWAH X দলিল দেওয়া নেই, তবে কখনোই নিজের থেকে ফতোয়া দেবে না—বরং বিনয়ের সাথে জানাবে যে DAWAH X সংগ্রহে এ বিষয়ে সরাসরি ফতোয়া পাওয়া যায়নি।';
+
+    const contextStr = hasRag
+      ? data.rag_context.map((c) => `${c.citation}\n${c.content}`).join('\n\n---\n\n')
+      : '';
+    const userPrompt = hasRag
+      ? `পূর্ববর্তী আলাপ:\n${recentTurns}\n\nবর্তমান প্রশ্ন: ${question}\n\nDAWAH X থেকে প্রাপ্ত প্রাসঙ্গিক দলিল:\n${contextStr}`
+      : `পূর্ববর্তী আলাপ:\n${recentTurns}\n\nব্যবহারকারীর বার্তা: ${question}`;
 
     try {
       let generated = '';
@@ -380,16 +393,58 @@
         </div>`;
     }
 
-    // Follow-up chips
-    let followUpHtml = '';
-    if (data.follow_ups && data.follow_ups.length > 0) {
-      const chips = data.follow_ups
-        .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`)
+    // Natural Conversational Bubble Mode (for greetings, everyday small talk, follow-up elaborations, or gentle unmatched replies)
+    if (data.is_chat || data.status === 'conversational' || data.status === 'not_found') {
+      const wrap = document.createElement('article');
+      wrap.className = 'msg-ai-chat';
+
+      const quickChips = (data.follow_ups || [])
+        .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">${escHtml(fq)}</button>`)
         .join('');
+      const quickHtml = quickChips ? `<div class="chat-quick-replies">${quickChips}</div>` : '';
+
+      const notFoundAction =
+        data.status === 'not_found'
+          ? `<div style="margin-top:4px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
+          : '';
+
+      wrap.innerHTML = `
+        <div class="ai-avatar-dot" title="DAWAH X AI">
+          <img src="logo-icon.webp" alt="DX" />
+        </div>
+        <div class="ai-chat-bubble">
+          <div data-llm-slot>
+            <p>${formatRichText(data.direct_answer)}</p>
+            ${explanationHtml}
+          </div>
+          ${dalilHtml}
+          ${sourcesHtml}
+          ${videosHtml}
+          ${notFoundAction}
+          ${quickHtml}
+        </div>
+      `;
+      return wrap;
+    }
+
+    // Follow-up chips + natural conversational follow-up triggers for grounded answers
+    const convTriggers = [];
+    if (data.extra_body && data.extra_body.length > 260) {
+      convTriggers.push(`<button type="button" class="followup-chip" data-q="আরেকটু বিস্তারিত বলো">💬 আরেকটু বিস্তারিত বলো</button>`);
+    }
+    if (data.videos && data.videos.length > 0) {
+      convTriggers.push(`<button type="button" class="followup-chip" data-q="এ বিষয়ে ভিডিও আছে?">🎬 ভিডিও আলোচনা দেখুন</button>`);
+    }
+    const topicChips = (data.follow_ups || []).map(
+      (fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`
+    );
+    const allChips = [...convTriggers, ...topicChips].join('');
+    let followUpHtml = '';
+    if (allChips) {
       followUpHtml = `
         <div class="sources-section">
-          <div class="sec-heading">💡 এ বিষয়ে আরও জানতে ক্লিক করুন</div>
-          <div class="followup-wrap">${chips}</div>
+          <div class="sec-heading">💡 কথোপকথন চালিয়ে যান বা আরও জানুন</div>
+          <div class="followup-wrap">${allChips}</div>
         </div>`;
     }
 
@@ -400,15 +455,20 @@
       data.primary_url ? `সূত্র (DAWAH X): ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
     ].join('\n\n');
 
+    const introHtml = data.conversational_intro
+      ? `<div class="ai-conv-intro">${formatRichText(data.conversational_intro)}</div>`
+      : '';
+
     card.innerHTML = `
       <div class="ai-meta-top">
         ${statusBadgeHtml}
         ${srcBadgeHtml}
         <span class="meta-stat">⚡ ${latStr} মি.সে.</span>
       </div>
+      ${introHtml}
       <h3 class="ai-headline">${escHtml(data.headline)}</h3>
       <div class="ai-direct-verdict">
-        <strong class="verdict-lbl">${data.status === 'answered' ? 'সারসংক্ষেপ / মূল উত্তর:' : ''}</strong>
+        <strong class="verdict-lbl">সারসংক্ষেপ / মূল উত্তর:</strong>
         <span>${formatRichText(data.direct_answer)}</span>
       </div>
       <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
@@ -441,9 +501,11 @@
 
     const loader = document.createElement('div');
     loader.className = 'thinking-card';
-    loader.innerHTML = `<div class="spinner"></div><span>DAWAH X-এর ২৪,২০৭+ লেখা ও ফতোয়া থেকে দলিল খোঁজা হচ্ছে...</span>`;
+    loader.innerHTML = `<div class="spinner"></div><span>DAWAH X AI চিন্তা করছে...</span>`;
     chatContainer.appendChild(loader);
     chatScroll.scrollTop = chatScroll.scrollHeight;
+
+    const historySnapshot = chatHistory.slice(-10);
 
     try {
       let data = null;
@@ -456,23 +518,37 @@
               question,
               source_filter: activeFilter,
               top_k: 5,
+              history: historySnapshot,
             }),
           });
           if (res.ok) data = await res.json();
         } catch (_) {}
       }
       if (!data && window.DawahXBrowserAI) {
-        data = await window.DawahXBrowserAI.ask(question, activeFilter, 5);
+        data = await window.DawahXBrowserAI.ask(question, activeFilter, 5, historySnapshot);
       }
       if (!data) throw new Error('No AI response');
+
+      // Record turn in multi-turn memory
+      chatHistory.push({ role: 'user', text: question });
+      chatHistory.push({
+        role: 'assistant',
+        text: data.direct_answer || '',
+        primary_title: data.headline || '',
+        extra_body: data.extra_body || '',
+        evidences: data.evidences || [],
+        sources: data.sources || [],
+        videos: data.videos || [],
+      });
+      if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
 
       loader.remove();
       const answerCard = renderAnswerCard(data);
       chatContainer.appendChild(answerCard);
       answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // Optional client-side LLM prose polish if user enabled it in settings
-      if (data.status === 'answered') {
+      // Optional client-side LLM prose polish or open-ended conversation if user enabled it in settings
+      if (data.status === 'answered' || data.status === 'not_found') {
         const slot = answerCard.querySelector('[data-llm-slot]');
         maybeEnhanceWithBrowserLLM(question, data, slot);
       }

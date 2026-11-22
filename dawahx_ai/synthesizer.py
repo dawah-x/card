@@ -7,10 +7,11 @@ comes directly from verified texts on `https://ebrahim-ead.github.io/DAWAH-X/`.
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from . import DAWAHX_SITE_URL
-from .normalizer import detect_conversational_intent, tokenize_folded
+from .dialogue import build_conversational_opening, handle_dialogue_turn
+from .normalizer import tokenize_folded
 
 _SENT_SPLIT_RE = re.compile(r"(?<=[।?!])\s+")
 
@@ -111,68 +112,17 @@ def _select_best_paragraphs(
     return selected
 
 
-def synthesize_response(query: str, retrieval: Dict[str, Any], summary: Dict[str, Any]) -> Dict[str, Any]:
-    """Build a structured, strictly grounded Bengali Islamic answer from DAWAH X retrieval results."""
-    intent = detect_conversational_intent(query)
-    total_docs = summary.get("total_documents", 24207)
-    total_vids = summary.get("total_videos", 9310)
-
-    if intent == "greeting":
-        return {
-            "status": "conversational",
-            "query": query,
-            "headline": "ওয়া আলাইকুমুস সালাম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু!",
-            "direct_answer": (
-                f"আমি **DAWAH X AI**। কুরআন ও সহীহ সুন্নাহর আলোকে সাজানো **DAWAH X** ওয়েবসাইটের "
-                f"**{total_docs:,}+** ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধ এবং **{total_vids:,}+** ইসলামিক ভিডিও থেকে "
-                f"আপনার প্রশ্নের দলিলভিত্তিক উত্তর খুঁজে দিতে প্রস্তুত।"
-            ),
-            "explanation_paragraphs": [
-                "আপনি বাংলা, Banglish (যেমন: *namaz venge gele ki korbo*) অথবা ইংরেজিতে যেকোনো ইসলামিক মাসআলা, আকীদা, কুরআন-হাদীস কিংবা সংশয়মূলক প্রশ্ন করতে পারেন। আমি কোনো মনগড়া তথ্য যোগ না করে সরাসরি DAWAH X-এর যাচাইকৃত উৎস ও লিংকসহ উত্তর দেব।"
-            ],
-            "additional_perspectives": [],
-            "evidences": [],
-            "sources": [],
-            "videos": [],
-            "follow_ups": [
-                "মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের ঘর করায় শারঈ বাধা আছে কি?",
-                "আল্লাহর অস্তিত্বের যুক্তি ও প্রমাণ কী?",
-                "যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, তাদের বিচার কীভাবে হবে?",
-                "ইসলামে গান ও বাদ্যযন্ত্রের বিধান কী?",
-            ],
-            "confidence": 1.0,
-            "latency_ms": 0.5,
-            "ask_team_url": f"{DAWAHX_SITE_URL}/ask.html",
-        }
-
-    if intent == "identity":
-        return {
-            "status": "conversational",
-            "query": query,
-            "headline": "পরিচিতি — DAWAH X AI মডেল",
-            "direct_answer": (
-                f"আমি **DAWAH X** (`{DAWAHX_SITE_URL}/`)-এর নিজস্ব ইসলামিক প্রশ্নোত্তর এআই মডেল। "
-                f"আমাকে কোনো ইসলামিক প্রশ্ন করা হলে আমি শুধুমাত্র এই ওয়েবসাইটের সংগৃহীত **{total_docs:,}টি** "
-                f"ফতোয়া, প্রবন্ধ ও প্রশ্নোত্তর (মাসিক আত-তাহরীক, মাসিক আল-ইতিছাম, মাসিক আল-ইখলাছ, From Muslims, "
-                f"Response to Anti-Islam, Insight Zone ও Islamic Authors) এবং **{total_vids:,}টি** ভিডিও থেকে উত্তর প্রদান করি।"
-            ),
-            "explanation_paragraphs": [
-                "আমার মূল নীতি হলো **শতভাগ আমানতদারিতা**: ওয়েবসাইটে নেই এমন কোনো ফতোয়া বা মনগড়া কথা আমি নিজে থেকে তৈরি করি না। প্রতিটি উত্তরের নিচে মূল লেখার সরাসরি লিংক দেওয়া থাকে যাতে আপনি সম্পূর্ণ দলিল যাচাই করে পড়তে পারেন।"
-            ],
-            "additional_perspectives": [],
-            "evidences": [],
-            "sources": [],
-            "videos": [],
-            "follow_ups": [
-                "সালাতে সাহু সিজদা কখন এবং কীভাবে দিতে হয়?",
-                "রোজা অবস্থায় ইনজেকশন বা স্যালাইন নিলে কি রোজা ভেঙে যাবে?",
-                "পৃথিবীতে দুঃখ-কষ্ট ও পরীক্ষা কেন দেওয়া হয়?",
-                "যাকাত ফরয হওয়ার নিসাব ও হিসাব করার নিয়ম কী?",
-            ],
-            "confidence": 1.0,
-            "latency_ms": 0.5,
-            "ask_team_url": f"{DAWAHX_SITE_URL}/ask.html",
-        }
+def synthesize_response(
+    query: str,
+    retrieval: Dict[str, Any],
+    summary: Dict[str, Any],
+    history: Optional[List[Dict[str, Any]]] = None,
+    used_history: bool = False,
+) -> Dict[str, Any]:
+    """Build a natural, conversational, strictly grounded Bengali response from DAWAH X."""
+    chat_resp = handle_dialogue_turn(query, summary, history=history)
+    if chat_resp is not None:
+        return chat_resp
 
     candidates: List[Dict[str, Any]] = retrieval.get("candidates", [])
     videos: List[Dict[str, Any]] = retrieval.get("videos", [])
@@ -188,14 +138,15 @@ def synthesize_response(query: str, retrieval: Dict[str, Any], summary: Dict[str
         partial_sources = [c for c in candidates[:3] if c["confidence"] >= 0.14 and c["core_coverage"] > 0.0]
         return {
             "status": "not_found",
+            "is_chat": True,
             "query": query,
-            "headline": "DAWAH X সংগ্রহে এ বিষয়ে সরাসরি উত্তর পাওয়া যায়নি",
+            "headline": "",
             "direct_answer": (
-                "দুঃখিত, আপনার এই নির্দিষ্ট প্রশ্নটির হুবহু বা নিশ্চিত উত্তর **DAWAH X**-এর বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। "
-                "ইসলামী শরীআতের বিষয়ে অনুমান বা সাইটের বাইরের তথ্য দিয়ে মনগড়া ফতোয়া প্রদান করা থেকে আমরা বিরত থাকি।"
+                "আপনার কথাটির জন্য ধন্যবাদ! আমি আপনার সাথে স্বাভাবিকভাবে যেকোনো বিষয়ে কথাবার্তা বলতে পারি; "
+                "তবে কোনো নির্দিষ্ট মাসআলা বা তথ্যগত প্রশ্নের ক্ষেত্রে আমি শুধুমাত্র **DAWAH X**-এর যাচাইকৃত সংগ্রহ থেকেই উত্তর দিই—যাতে কখনো মনগড়া বা ভুল ফতোয়া চলে না যায়।"
             ),
             "explanation_paragraphs": [
-                "আপনি প্রশ্নটি ভিন্নভাবে বা মূল বাংলা শব্দ ব্যবহার করে পুনরায় খুঁজে দেখতে পারেন, অথবা নিচের বোতামে ক্লিক করে সরাসরি **DAWAH X টিমের** কাছে আপনার প্রশ্নটি পাঠাতে পারেন।"
+                "এই নির্দিষ্ট প্রশ্নটির সরাসরি উত্তর DAWAH X-এর বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। আপনি চাইলে প্রশ্নটি একটু ভিন্নভাবে লিখতে পারেন, নিচের বাটনে ক্লিক করে সরাসরি **DAWAH X টিমে** পাঠাতে পারেন, অথবা আমার সাথে অন্য যেকোনো বিষয়ে আলাপ চালিয়ে যেতে পারেন!"
             ],
             "additional_perspectives": [],
             "evidences": [],
@@ -340,9 +291,15 @@ def synthesize_response(query: str, retrieval: Dict[str, Any], summary: Dict[str
         for i, c in enumerate(cited_docs[:3])
     ]
 
+    conversational_intro = build_conversational_opening(
+        query, prose_doc["doc_type"], prose_doc["source_name"], used_history=used_history
+    )
+
     return {
         "status": "answered",
+        "is_chat": False,
         "query": query,
+        "conversational_intro": conversational_intro,
         "headline": primary["clean_title"],
         "primary_source_name": primary["source_name"],
         "primary_doc_type": primary["doc_type"],
@@ -350,6 +307,7 @@ def synthesize_response(query: str, retrieval: Dict[str, Any], summary: Dict[str
         "primary_url": primary["dawahx_url"],
         "direct_answer": direct_answer,
         "explanation_paragraphs": explanation_paragraphs,
+        "extra_body": _trim_cleanly(prose_doc.get("answer_body", ""), 2600),
         "additional_perspectives": additional_perspectives,
         "evidences": evidences,
         "sources": sources_payload,
