@@ -1,7 +1,7 @@
 import { handleAIChat, handleHealth, handleOptions, jsonResponse } from './ai-handler.js';
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const path = url.pathname.replace(/\/+$/, '') || '/';
 
@@ -13,7 +13,7 @@ export default {
         return handleHealth(env);
       }
       if ((path === '/api/ai' || path === '/api/chat') && request.method === 'POST') {
-        return handleAIChat(request, env);
+        return handleAIChat(request, env, ctx);
       }
       return jsonResponse({ ok: false, error: 'Not found' }, 404);
     }

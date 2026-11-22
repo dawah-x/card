@@ -1,7 +1,7 @@
-/* DAWAH X AI — Progressive Web App Service Worker (Network-first with instant offline cache fallback) */
+/* DAWAH X AI — Progressive Web App Service Worker (v13.0 — Cache-first fonts + Network-first shell) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v12';
+const CACHE_NAME = 'dawahx-ai-v13';
 const SHELL_ASSETS = [
   './',
   'index.html',
@@ -13,6 +13,10 @@ const SHELL_ASSETS = [
   'logo-icon.webp',
   'icon-192.png',
   'manifest.webmanifest',
+  'fonts/hind-siliguri-bengali-400-normal.woff2',
+  'fonts/hind-siliguri-bengali-600-normal.woff2',
+  'fonts/hind-siliguri-bengali-700-normal.woff2',
+  'fonts/noto-naskh-arabic-arabic-400-normal.woff2',
 ];
 
 self.addEventListener('install', (event) => {
@@ -38,6 +42,24 @@ self.addEventListener('fetch', (event) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.pathname.includes('/api/')) return;
+
+  // Cache-first for immutable self-hosted WOFF2 fonts & icons
+  if (/\.(?:woff2|webp|png|svg)$/i.test(url.pathname) && url.origin === self.location.origin) {
+    event.respondWith(
+      caches.match(req).then(
+        (cached) =>
+          cached ||
+          fetch(req).then((res) => {
+            if (res && res.ok) {
+              const clone = res.clone();
+              caches.open(CACHE_NAME).then((c) => c.put(req, clone)).catch(() => {});
+            }
+            return res;
+          })
+      )
+    );
+    return;
+  }
 
   event.respondWith(
     fetch(req)
