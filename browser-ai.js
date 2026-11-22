@@ -2742,16 +2742,16 @@
     },
 
     _notFoundPayload(question, partialDocs, videos, t0) {
-      const validPartials = partialDocs.filter((c) => c.confidence >= 0.22);
+      const validPartials = partialDocs.filter((c) => c.confidence >= 0.16);
       return {
-        status: 'web_fallback',
-        is_chat: false,
+        status: 'not_found',
+        is_chat: true,
         query: question,
-        headline: summarizeLongHeadline(question),
-        primary_source_name: 'ওয়েব ও প্রামাণ্য সূত্র',
-        direct_answer: '',
+        headline: '',
+        direct_answer:
+          'দুঃখিত, এই নির্দিষ্ট প্রশ্নটির সরাসরি উত্তর **DAWAH X** ওয়েবসাইটের বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। ভুল বা যাচাইহীন তথ্য এড়াতে আমি শুধুমাত্র **DAWAH X** ওয়েবসাইটের যাচাইকৃত দলিল ও সংগ্রহ থেকেই উত্তর প্রদান করি—অন্য কোনো ওয়েবসাইট থেকে উত্তর দেওয়া হয় না।',
         explanation_paragraphs: [
-          'এই প্রশ্নটির সরাসরি উত্তর DAWAH X-এর স্থানীয় অফলাইন ইনডেক্সে নেই। ইন্টারনেট সংযোগ চালু থাকলে স্বয়ংক্রিয়ভাবে অন্যান্য নির্ভরযোগ্য ওয়েবসাইট ও প্রামাণ্য সূত্র থেকে উত্তর প্রদর্শিত হবে, অথবা আপনি সরাসরি DAWAH X টিমেও প্রশ্নটি পাঠাতে পারেন।',
+          'আপনি চাইলে প্রশ্নটি একটু ভিন্ন শব্দে লিখে পুনরায় খুঁজতে পারেন, অথবা নিচের বাটনে ক্লিক করে প্রশ্নটি সরাসরি **DAWAH X টিমে** পাঠাতে পারেন।',
         ],
         additional_perspectives: [],
         evidences: [],
@@ -2770,7 +2770,11 @@
           confidence: s.confidence,
         })),
         videos: validPartials.length ? videos.slice(0, 2) : [],
-        follow_ups: [],
+        follow_ups: [
+          'কুরআন ও সুন্নাহর আলোকে তাওহীদের গুরুত্ব কী?',
+          'সালাত আদায়ের সহীহ নিয়ম কী?',
+          'আল্লাহর রহমত ও তওবা কবুলের শর্ত কী?',
+        ],
         confidence: validPartials[0] ? validPartials[0].confidence : 0,
         latency_ms: Math.round(performance.now() - t0),
         ask_team_url: `${SITE_URL}/ask.html`,

@@ -1,7 +1,7 @@
-/* DAWAH X AI — Progressive Web App Service Worker (v14.0 — Hybrid Multi-Source + Cache-first fonts) */
+/* DAWAH X AI — Progressive Web App Service Worker (v15.0 — Strict DAWAH X Exclusive + Cache-first fonts) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v14';
+const CACHE_NAME = 'dawahx-ai-v15';
 const SHELL_ASSETS = [
   './',
   'index.html',
