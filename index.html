@@ -3,9 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>DAWAH X AI — ইসলামিক প্রশ্নোত্তর এআই মডেল</title>
+  <title>DAWAH X AI — দলিলনির্ভর ইসলামিক প্রশ্নোত্তর ও স্মার্ট সহকারী</title>
   <meta name="description" content="DAWAH X ওয়েবসাইটের ২৪,২০৭+ ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধ এবং ৯,৩১০+ ভিডিও থেকে দলিলভিত্তিক ইসলামিক উত্তর প্রদানকারী এআই মডেল।" />
+  <meta name="theme-color" content="#071419" id="metaThemeColor" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <link rel="manifest" href="manifest.webmanifest" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -100,6 +103,15 @@
       </div>
 
       <div class="sidebar-footer">
+        <button class="ghost-action-btn" data-q="আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?">
+          🆕 সদ্য প্রকাশিত লেখা ও ভিডিও
+        </button>
+        <button class="ghost-action-btn" id="exportChatBtn">
+          ⬇ কথোপকথন ডাউনলোড (.txt)
+        </button>
+        <button class="ghost-action-btn" id="installPwaBtn" style="display:none; color:var(--gold-bright); border-color:var(--gold-border);">
+          📲 অ্যাপ হিসেবে ইনস্টল করুন
+        </button>
         <button class="ghost-action-btn" id="openModelModalBtn">
           ⚙ মডেল তথ্য ও ওয়েবসাইট উইজেট
         </button>
@@ -115,14 +127,19 @@
         <div class="header-left">
           <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
           <div class="model-badge-bar">
-            <strong>DAWAH X AI v3.0</strong>
+            <strong>DAWAH X AI v4.0</strong>
             <span class="strict-tag">✓ স্মার্ট কথোপকথন · শতভাগ DAWAH-X দলিলনির্ভর</span>
           </div>
         </div>
         <div class="header-actions">
-          <button type="button" class="prayer-pill-btn" id="livePrayerBtn" data-q="আজকের নামাজের সময়সূচি দাও" title="আজকের নামাজ, সেহরি ও ইফতারের পূর্ণ সময়সূচি দেখুন">
+          <button type="button" class="live-broadcast-btn" id="liveStreamBtn" style="display:none;" title="সরাসরি সম্প্রচার দেখুন">
+            <span class="pulse-red"></span> লাইভ দেখুন
+          </button>
+          <button type="button" class="prayer-pill-btn" id="livePrayerBtn" title="২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার দেখুন">
             🕌 নামাজের সময়
           </button>
+          <button type="button" class="hdr-icon-btn" id="fontSizeBtn" title="লেখার আকার পরিবর্তন করুন">অ+</button>
+          <button type="button" class="hdr-icon-btn" id="themeToggleBtn" title="দিন / রাত থিম পরিবর্তন করুন">☀️</button>
           <a href="https://ebrahim-ead.github.io/DAWAH-X/fatwa.html" target="_blank" rel="noopener noreferrer" class="hdr-link">ফতোয়া সূচি ↗</a>
           <a href="https://ebrahim-ead.github.io/DAWAH-X/ask.html" target="_blank" rel="noopener noreferrer" class="hdr-link">প্রশ্ন পাঠান ↗</a>
         </div>
@@ -143,10 +160,11 @@
 
             <div class="quick-tools-row">
               <button type="button" class="quick-tool-pill" data-q="আসসালামু আলাইকুম! কেমন আছো তুমি?">💬 স্বাভাবিক আড্ডা</button>
-              <button type="button" class="quick-tool-pill" data-q="আজকের নামাজের সময়সূচি দাও">🕌 নামাজ ও ইফতারের সময়</button>
+              <button type="button" class="quick-tool-pill" data-open-prayer-modal="1">🕌 ২৪ জেলার নামাজ ও হিজরি</button>
               <button type="button" class="quick-tool-pill" data-q="৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?">🧮 যাকাত ক্যালকুলেটর</button>
               <button type="button" class="quick-tool-pill" data-q="একটা ইসলামিক কুইজ ধরো">🎯 ইসলামিক কুইজ</button>
-              <button type="button" class="quick-tool-pill" data-q="আয়াতুল কুরসী অর্থসহ বলো">🤲 আয়াতুল কুরসী</button>
+              <button type="button" class="quick-tool-pill" data-q="আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?">🆕 সদ্য প্রকাশিত</button>
+              <button type="button" class="quick-tool-pill" data-q="আয়াতুল কুরসী অর্থসহ বলো">🤲 মাসনূন দোয়া</button>
             </div>
 
             <div class="starter-grid">
@@ -281,6 +299,74 @@ Content-Type: application/json
           <span id="llmSavedMsg" style="font-size: 12.5px; color: var(--emerald); margin-left: 8px;"></span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- 24-District Live Prayer, Sehri, Iftar & Hijri Calendar Modal -->
+  <div class="modal-dialog" id="prayerModal" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <strong style="color: var(--gold-bright);">🕌 নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার</strong>
+      <button class="src-action-btn" data-close-modal="1">✕ বন্ধ করুন</button>
+    </div>
+    <div class="modal-body">
+      <div class="prayer-modal-top">
+        <div>
+          <label for="prayerCitySelect" style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;">আপনার জেলা নির্বাচন করুন:</label>
+          <select id="prayerCitySelect" class="input-field" style="min-width:190px;"></select>
+        </div>
+        <div class="hijri-badge-box">
+          <small style="color:var(--muted);">আজকের আনুমানিক হিজরি তারিখ</small>
+          <strong id="prayerHijriLabel" style="color:var(--gold-bright);font-size:15.5px;">লোড হচ্ছে...</strong>
+        </div>
+      </div>
+      <div class="prayer-countdown-banner" id="prayerCountdownBanner"></div>
+      <div class="prayer-grid-table" id="prayerGridTable"></div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;align-items:center;">
+        <small style="color:var(--muted);font-size:12px;">পদ্ধতি: ইসলামিক ফাউন্ডেশন / করাচি ১৮° (ফজর ও এশা)</small>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button type="button" class="src-action-btn gold-link" data-q="আউয়াল ওয়াক্তে সালাত আদায়ের ফযীলত কী?">আউয়াল ওয়াক্তের ফযীলত</button>
+          <button type="button" class="src-action-btn" data-q="ফজরের সালাত কাযা হলে কখন পড়তে হবে?">কাযা সালাতের নিয়ম</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 1080x1080 HD Dawah / Fatwa Quote Card Generator Modal -->
+  <div class="modal-dialog" id="quoteCardModal" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <strong style="color: var(--gold-bright);">🖼 ১০৮০×১০৮০ HD দাওয়াহ ও ফতোয়া কার্ড তৈরি করুন</strong>
+      <button class="src-action-btn" data-close-modal="1">✕ বন্ধ করুন</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
+        <span style="font-size:13px;color:var(--muted);">সোশ্যাল মিডিয়া বা WhatsApp-এ শেয়ার করার জন্য ব্রাউজারেই প্রিমিয়াম দাওয়াহ কার্ড তৈরি করুন:</span>
+        <div style="display:flex;gap:6px;">
+          <button type="button" class="src-action-btn gold-link" id="quoteThemeDarkBtn">🌙 ডার্ক এমারেল্ড</button>
+          <button type="button" class="src-action-btn" id="quoteThemeLightBtn">☀️ গোল্ড পার্চমেন্ট</button>
+        </div>
+      </div>
+      <textarea id="quoteCardText" class="input-field" rows="3" maxlength="340" placeholder="উদ্ধৃতি বা মূল উত্তর..."></textarea>
+      <div class="quote-canvas-wrap">
+        <canvas id="quoteCanvas" width="1080" height="1080"></canvas>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap;">
+        <button type="button" class="src-action-btn gold-link" id="downloadQuotePngBtn">⬇ PNG ছবি ডাউনলোড করুন</button>
+        <button type="button" class="src-action-btn" id="shareQuotePngBtn">📲 সরাসরি ছবি শেয়ার করুন</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- In-App YouTube Cinema Lightbox Modal -->
+  <div class="modal-dialog video-lightbox-dialog" id="videoModal" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <strong id="videoModalTitle" style="color: var(--gold-bright); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:72%;">ভিডিও আলোচনা</strong>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <a href="#" id="videoExternalLink" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">YouTube ↗</a>
+        <button class="src-action-btn" data-close-modal="1">✕ বন্ধ করুন</button>
+      </div>
+    </div>
+    <div class="video-player-frame-wrap">
+      <iframe id="videoModalIframe" src="" title="DAWAH X Video Player" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
     </div>
   </div>
 

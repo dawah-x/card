@@ -1,0 +1,31 @@
+{
+  "name": "DAWAH X AI — দলিলনির্ভর ইসলামিক এআই ও কথোপকথন সহকারী",
+  "short_name": "DAWAH X AI",
+  "description": "বাংলা, Banglish ও ইংরেজিতে স্বাভাবিক কথোপকথন এবং শতভাগ DAWAH X দলিলনির্ভর ইসলামিক প্রশ্নোত্তর ও ফতোয়া এআই।",
+  "lang": "bn-BD",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#050e12",
+  "theme_color": "#071419",
+  "icons": [
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

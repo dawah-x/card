@@ -90,8 +90,30 @@
     return token;
   }
 
+  const COMPOUND_BN_REPLACEMENTS = [
+    [/পিতামাতা/gu, 'পিতা মাতা'],
+    [/মাবাবা|বাবামা/gu, 'মা বাবা পিতা মাতা'],
+    [/স্বামীস্ত্রী/gu, 'স্বামী স্ত্রী'],
+    [/ভাইবোন/gu, 'ভাই বোন'],
+    [/ছেলেমেয়ে|ছেলেমেয়ে/gu, 'ছেলে মেয়ে'],
+    [/শবেবরাত/gu, 'শবে বরাত'],
+    [/শবেকদর/gu, 'শবে কদর'],
+    [/ঈদুলফিতর/gu, 'ঈদুল ফিতর'],
+    [/ঈদুলআযহা|ঈদুলআজহা/gu, 'ঈদুল আযহা'],
+    [/আয়াতুলকুরসী|আয়াতুলকুরসি/gu, 'আয়াতুল কুরসী'],
+    [/সিজদায়েসাহু/gu, 'সিজদায়ে সাহু'],
+  ];
+
+  function expandCompoundsBn(text) {
+    let s = String(text || '');
+    for (const [re, rep] of COMPOUND_BN_REPLACEMENTS) {
+      s = s.replace(re, rep);
+    }
+    return s;
+  }
+
   function tokenizeFolded(text, doStem = true) {
-    const folded = foldBn(text).replace(/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+/g, ' ');
+    const folded = foldBn(expandCompoundsBn(text)).replace(/[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]+/g, ' ');
     const raw = folded.match(/[\p{L}\p{M}\p{N}]+/gu) || [];
     const out = [];
     for (const tok of raw) {
@@ -168,10 +190,12 @@
     ['ওমরা', 'উমরা', 'উমরাহ'],
     ['মসজিদ', 'মাসজিদ'],
     ['বিতর', 'বিতির', 'বেতের'],
-    ['তারাবি', 'তারাবীহ', 'তাহাজ্জুদ'],
+    ['তারাবি', 'তারাবীহ'],
+    ['তাহাজ্জুদ', 'কিয়ামুল'],
     ['সেহরি', 'সাহরি', 'সাহারি', 'সাহরী'],
     ['বিয়ে', 'বিবাহ', 'নিকাহ'],
-    ['তালাক', 'ডিভোর্স', 'বিবাহবিচ্ছেদ', 'খুলা'],
+    ['তালাক', 'ডিভোর্স', 'বিবাহবিচ্ছেদ'],
+    ['খুলা', 'খোলা'],
     ['মোহর', 'দেনমোহর', 'মাহর'],
     ['পর্দা', 'হিজাব', 'নিকাব', 'বোরকা', 'মাহরাম'],
     ['নারী', 'মহিলা', 'স্ত্রী'],
@@ -186,14 +210,14 @@
     ['ছবি', 'মূর্তি', 'ভাস্কর্য', 'ফটোগ্রাফি'],
     ['দাড়ি', 'শ্মশ্রু'],
     ['টাখনু', 'ইসাবাল', 'প্যান্ট'],
-    ['তাবিজ', 'কবজ', 'ঝাড়ফুঁক', 'রুকইয়াহ', 'যাদু'],
+    ['তাবিজ', 'তাবীয', 'কবজ', 'ঝাড়ফুঁক', 'রুকইয়াহ', 'যাদু'],
     ['হালাল', 'জায়েয', 'জায়েজ', 'বৈধ'],
     ['হারাম', 'নাজায়েয', 'নিষিদ্ধ', 'অবৈধ', 'গুনাহ', 'পাপ'],
     ['ফরজ', 'ফরয', 'ওয়াজিব'],
     ['তওবা', 'তাওবা', 'ইস্তিগফার', 'ক্ষমা'],
     ['মিরাস', 'উত্তরাধিকার', 'ওয়ারিশ'],
     ['ইনজেকশন', 'ইঞ্জেকশন', 'স্যালাইন'],
-    ['ভঙ্গ', 'ভেঙে', 'ভাঙে', 'নষ্ট'],
+    ['ভঙ্গ', 'ভঙ্গের', 'ভাঙ্গা', 'ভাঙ্গার', 'ভাঙা', 'ভাঙার', 'ভেঙে', 'ভাঙে', 'নষ্ট'],
     ['মনোযোগ', 'খুশু', 'খুযু', 'একাগ্রতা', 'মন'],
     ['কাযা', 'ক্বাযা', 'কাজা'],
     ['অপবিত্র', 'নাপাক', 'জুনুবী', 'জানাবাত'],
@@ -203,6 +227,12 @@
     ['বহুবিবাহ', 'একাধিক', 'চারটি'],
     ['ক্যাশব্যাক', 'ডিসকাউন্ট', 'ছাড়'],
     ['নিয়ম', 'পদ্ধতি', 'বিবরণ'],
+    ['আয়েশা', 'আয়িশা'],
+    ['জানাযা', 'জানাজা', 'মাইয়্যেত'],
+    ['আমল', 'আদব', 'সুন্নাত'],
+    ['বিষন্নতা', 'হতাশা', 'দুশ্চিন্তা', 'অশান্তি'],
+    ['বিবর্তনবাদ', 'ডারউইনবাদ', 'ডারউইন'],
+    ['আত্মহত্যা', 'সুইসাইড'],
   ];
 
   const SYNONYM_MAP = new Map();
@@ -235,7 +265,7 @@
     asor: 'আসর সালাত', asr: 'আসর সালাত', magrib: 'মাগরিব সালাত', maghrib: 'মাগরিব সালাত',
     esha: 'এশা সালাত', isha: 'এশা সালাত', tahajjud: 'তাহাজ্জুদ সালাত',
     tarabi: 'তারাবীহ সালাত', tarawih: 'তারাবীহ সালাত', witr: 'বিতর সালাত', bitor: 'বিতর সালাত', vitir: 'বিতর সালাত',
-    juma: 'জুমআ সালাত', jumma: 'জুমআ সালাত', jumuah: 'জুমআ সালাত', janaza: 'জানাযা সালাত', janazah: 'জানাযা সালাত',
+    juma: 'জুমআ সালাত', jumma: 'জুমআ সালাত', jumuah: 'জুমআ সালাত', janaza: 'জানাযা সালাত তাকবীর দুআ', janazah: 'জানাযা সালাত তাকবীর দুআ',
     rakat: 'রাকআত', rakaat: 'রাকআত', sijdah: 'সিজদা সাহু', sijda: 'সিজদা সাহু', sejda: 'সিজদা',
     sahu: 'সাহু সিজদা', ruku: 'রুকু', tashahhud: 'তাশাহহুদ', salam_namaz: 'সালাম',
     imam: 'ইমাম জামাআত', jamat: 'জামাআত সালাত', jamaat: 'জামাআত সালাত', muazzin: 'মুয়াজ্জিন আযান',
@@ -293,21 +323,28 @@
     tax: 'ট্যাক্স ভ্যাট', vat: 'ভ্যাট ট্যাক্স', miras: 'মিরাস উত্তরাধিকার সম্পত্তি', inheritance: 'মিরাস উত্তরাধিকার সম্পত্তি',
     music: 'গান বাদ্যযন্ত্র মিউজিক হারাম', gan: 'গান বাদ্যযন্ত্র', gaan: 'গান বাদ্যযন্ত্র', song: 'গান বাদ্যযন্ত্র',
     photo: 'ছবি মূর্তি ফটোগ্রাফি ভিডিও', chobi: 'ছবি মূর্তি ভিডিও', picture: 'ছবি মূর্তি',
-    beard: 'দাড়ি শ্মশ্রু', dari: 'দাড়ি রাখা কাটছাঁট', pant: 'প্যান্ট টাখনু পোশাক', takhnu: 'টাখনু গিরা প্যান্ট লুঙ্গি',
+    beard: 'দাড়ি শ্মশ্রু', dari: 'দাড়ি শ্মশ্রু', pant: 'প্যান্ট টাখনু পোশাক', takhnu: 'টাখনু গিরা প্যান্ট লুঙ্গি',
     eyebrow: 'ভ্রু প্লাক সৌন্দর্য', pluck: 'ভ্রু প্লাক লোম', tattoo: 'ট্যাটু উল্কি', gold: 'স্বর্ণ সোনা পুরুষ যাকাত',
     smoking: 'ধূমপান সিগারেট জর্দা নেশা', sigaret: 'সিগারেট ধূমপান', cigarette: 'সিগারেট ধূমপান', alcohol: 'মদ নেশা হারাম',
     dog: 'কুকুর পালা ফেরেশতা', kukur: 'কুকুর পালা', cat: 'বিড়াল প্রাণী পালা',
     tabij: 'তাবিজ ঝাড়ফুঁক শিরক', ruqyah: 'রুকইয়াহ ঝাড়ফুঁক', jadu: 'যাদু ব্ল্যাক ম্যাজিক শিরক', sihr: 'যাদু টোনা',
     mazar: 'মাজার কবর শিরক ওরস', birthday: 'জন্মদিন পালন বিদআত', newyear: 'নববর্ষ থার্টি ফার্স্ট বিদআত',
     valentine: 'ভ্যালেন্টাইন দিবস বেহায়াপনা',
-    // Parents, Sin, Repentance, Mental Peace, Sharia
+    // Parents, Sin, Repentance, Mental Peace, Sharia, Extra Banglish
     baba: 'পিতা মাতা বাবা মা', ma: 'মা পিতা মাতা সন্তান', parents: 'পিতা মাতা সন্তান হক',
-    suicide: 'আত্মহত্যা গুনাহ হতাশা', depression: 'হতাশা দুশ্চিন্তা ধৈর্য বিপদ', hotasha: 'হতাশা দুশ্চিন্তা সবর',
+    suicide: 'আত্মহত্যা গুনাহ হতাশা', attahotta: 'আত্মহত্যা গুনাহ হতাশা', attohotta: 'আত্মহত্যা গুনাহ হতাশা',
+    depression: 'বিষন্নতা হতাশা মানসিক অশান্তি', dipression: 'বিষন্নতা হতাশা মানসিক অশান্তি',
+    manoshik: 'মানসিক বিষন্নতা অশান্তি', oshanti: 'অশান্তি বিষন্নতা হতাশা', mukti: 'পরিত্রাণ মুক্তি উপায়',
+    upay: 'উপায় করণীয় প্রতিকার', prokar: 'প্রকার শ্রেণিবিভাগ', kake: 'কাকে সংজ্ঞা পরিচয়',
+    hotasha: 'হতাশা বিষন্নতা সবর', bibortonbad: 'বিবর্তনবাদ ডারউইনবাদ নাস্তিকতা', darwin: 'ডারউইনবাদ বিবর্তনবাদ',
+    aisha: 'আয়েশা আয়িশা বিবাহ বয়স', ayesha: 'আয়েশা আয়িশা বিবাহ বয়স', age: 'বয়স বিবাহ',
+    allow: 'বাধা পরীক্ষা হিকমত', porokiya: 'পরকীয়া যিনা ব্যভিচার', zina: 'যিনা ব্যভিচার পরকীয়া', jina: 'যিনা ব্যভিচার',
+    vanga: 'ভঙ্গ নষ্ট কারণ', vangar: 'ভঙ্গ নষ্ট কারণ', bhanga: 'ভঙ্গ নষ্ট কারণ', bhangar: 'ভঙ্গ নষ্ট কারণ',
     tauba: 'তওবা ক্ষমা গুনাহ ইস্তিগফার', tawbah: 'তওবা ক্ষমা গুনাহ', istighfar: 'ইস্তিগফার ক্ষমা তওবা',
     gunah: 'গুনাহ পাপ ক্ষমা তওবা', sin: 'গুনাহ পাপ তওবা', forgive: 'ক্ষমা তওবা রহমত',
     jihad: 'জিহাদ কিতাল সন্ত্রাসবাদ', slavery: 'দাসপ্রথা দাসী যুদ্ধবন্দী', apostate: 'মুরতাদ ধর্মত্যাগ শাস্তি', murtad: 'মুরতাদ ধর্মত্যাগ',
     halal: 'হালাল জায়েয বৈধ', haram: 'হারাম নাজায়েয নিষিদ্ধ', jayej: 'জায়েয বৈধ', najayez: 'নাজায়েয হারাম',
-    foroj: 'ফরয আবশ্যক', farz: 'ফরয আবশ্যক', fard: 'ফরয আবশ্যক', wajib: 'ওয়াজিব ফরয', makruh: 'মাকরূহ',
+    foroj: 'ফরয আবশ্যক', farz: 'ফরয আবশ্যক বিধান', fard: 'ফরয আবশ্যক বিধান', wajib: 'ওয়াজিব ফরয', makruh: 'মাকরূহ',
     karon: 'কারণ ভঙ্গ শর্ত', venge: 'ভঙ্গ ভেঙে নষ্ট', bhenge: 'ভঙ্গ ভেঙে নষ্ট', nosto: 'নষ্ট ভঙ্গ',
     sothik: 'সঠিক সহীহ সুন্নাহ', sahih: 'সহীহ বিশুদ্ধ হাদীস', daif: 'যঈফ দুর্বল হাদীস',
     injection: 'ইনজেকশন স্যালাইন ছিয়াম', saline: 'স্যালাইন ইনজেকশন ছিয়াম', medicine: 'ঔষধ চিকিৎসা রোজা',
@@ -342,7 +379,9 @@
       'যায়', 'যাবে', 'গেলে', 'যাওয়া', 'পারে', 'পারবে', 'পারা', 'পারি',
       'করা', 'করে', 'করলে', 'করব', 'করবো', 'করতে', 'করার', 'করেন',
       'দেওয়া', 'দেয়া', 'দিলে', 'দিতে', 'নেওয়া', 'নেয়া', 'নিলে', 'নিতে',
-      'বলা', 'বলে', 'বললে', 'বলেন', 'আছে', 'নেই', 'নাই', 'থাকা', 'থাকে', 'থাকলে',
+      'বলা', 'বলার', 'বলে', 'বললে', 'বলেন', 'আছে', 'নেই', 'নাই', 'থাকা', 'থাকে', 'থাকলে',
+      'গিয়ে', 'গিয়ে', 'এসে', 'আসা', 'বসে', 'দাঁড়িয়ে', 'পড়া', 'পড়ার', 'পড়লে', 'রাখা', 'রাখার', 'দেওয়া', 'দেওয়ার', 'নেওয়া', 'নেওয়ার',
+      'দিয়ে', 'নিয়ে', 'হয়ে', 'করেই', 'ভাবে', 'পawar', 'পাওয়া', 'পাওয়ার',
       'জন্য', 'থেকে', 'সাথে', 'সঙ্গে', 'মধ্যে', 'ভেতরে', 'উপর', 'ওপর', 'নিচে', 'নীচে',
       'এবং', 'ও', 'বা', 'অথবা', 'কিন্তু', 'তবে', 'যদি', 'তাহলে', 'নাকি', 'না', 'নয়',
       'এই', 'সেই', 'ওই', 'এটি', 'সেটি', 'এটা', 'সেটা', 'একটি', 'একটা', 'কিছু', 'সব', 'সকল',
@@ -365,22 +404,31 @@
     return true;
   }
 
-  // Replace known Banglish/English words with Bengali equivalents and drop Banglish grammatical particles
-  // while preserving unknown non-Banglish English words (so true OOD queries like "python gpu cluster" still abstain!)
+  // Replace known Banglish/English words (including inflected Banglish suffixes like -er, -r, -te, -ke, -der)
+  // with Bengali equivalents while preserving unknown non-Banglish English words for strict OOD abstention!
+  const BANGLISH_INFLECTION_SUFFIXES = ['gulo', 'gula', 'der', 'ter', 'tar', 'tir', 'er', 'te', 'ke', 'ta', 'ti', 'ra', 'r', 's', 'ing'];
+  function resolveBanglishWord(w) {
+    if (BANGLISH_AND_EN_MAP[w]) return BANGLISH_AND_EN_MAP[w];
+    for (const suf of BANGLISH_INFLECTION_SUFFIXES) {
+      if (w.length - suf.length >= 3 && w.endsWith(suf)) {
+        const stem = w.slice(0, -suf.length);
+        if (BANGLISH_AND_EN_MAP[stem]) return BANGLISH_AND_EN_MAP[stem];
+      }
+    }
+    return null;
+  }
+
   function translateBanglishAndEnglish(rawQuery) {
     return String(rawQuery || '').replace(/[a-zA-Z]{1,}/g, (rawWord) => {
       const w = rawWord.toLowerCase();
-      if (BANGLISH_AND_EN_MAP[w]) return ` ${BANGLISH_AND_EN_MAP[w]} `;
-      if (w.endsWith('er') && w.length >= 5 && BANGLISH_AND_EN_MAP[w.slice(0, -2)]) {
-        return ` ${BANGLISH_AND_EN_MAP[w.slice(0, -2)]} `;
-      }
-      if (w.endsWith('s') && w.length >= 4 && BANGLISH_AND_EN_MAP[w.slice(0, -1)]) {
-        return ` ${BANGLISH_AND_EN_MAP[w.slice(0, -1)]} `;
-      }
-      if (w.endsWith('ing') && w.length >= 5 && BANGLISH_AND_EN_MAP[w.slice(0, -3)]) {
-        return ` ${BANGLISH_AND_EN_MAP[w.slice(0, -3)]} `;
-      }
+      const mapped = resolveBanglishWord(w);
+      if (mapped) return ` ${mapped} `;
       if (w.length === 1 || BANGLISH_STOP_WORDS.has(w)) return ' ';
+      for (const suf of ['er', 'te', 'ke', 'ta', 'ti', 'ra', 'r']) {
+        if (w.length - suf.length >= 3 && w.endsWith(suf) && BANGLISH_STOP_WORDS.has(w.slice(0, -suf.length))) {
+          return ' ';
+        }
+      }
       return rawWord;
     });
   }
@@ -652,6 +700,34 @@
       meaning: 'হে আল্লাহ! আপনিই আমার রব, আপনি ছাড়া কোনো সত্য ইলাহ নেই। আপনিই আমাকে সৃষ্টি করেছেন এবং আমি আপনার বান্দা। আমি সাধ্যমতো আপনার অঙ্গীকার ও প্রতিশ্রুতির ওপর আছি। আমি আমার কৃতকর্মের অনিষ্ট থেকে আপনার আশ্রয় চাই। আমার ওপর আপনার নিআমত স্বীকার করছি এবং আমার গুনাহও স্বীকার করছি। অতএব আমাকে ক্ষমা করুন; কেননা আপনি ছাড়া গুনাহ ক্ষমা করার আর কেউ নেই।',
       virtue: 'ফযীলত: নবীজি ﷺ বলেছেন, কেউ দৃঢ় বিশ্বাসের সাথে সকালে এটি পাঠ করে সন্ধ্যার আগে মারা গেলে বা সন্ধ্যায় পাঠ করে সকালের আগে মারা গেলে সে জান্নাতবাসী হবে (সহীহ বুখারী ৬৩০৬)।',
     },
+    {
+      re: /^\s*(?:ঘুমানোর\s*(?:আগের?|সময়ের?)\s*(?:দোয়া|দুআ)|ঘুমাতে\s*যাওয়ার\s*দোয়া|sleeping\s*dua|dua\s*before\s*sleep)(?:\s*(?:ক[িী]|বলো|বলুন|দাও|জানাও))?[।!?.,\s]*$/i,
+      title: 'ঘুমানোর আগের সুন্নাত দোয়া ও ঘুম থেকে ওঠার দোয়া',
+      arabic: 'بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا',
+      meaning: 'উচ্চারণ: বিসমিকা আল্লাহুম্মা আমূতু ওয়া আহইয়া।\nঅর্থ: হে আল্লাহ! আপনারই নামে আমি মৃত্যুবরণ করি (ঘুমাই) এবং আপনারই নামে জীবিত হই (জেগে উঠি)।',
+      virtue: 'ঘুম থেকে জেগে ওঠার দোয়া: الْحَمْدُ لِلَّهِ الَّذِي أَحْيَانَا بَعْدَ مَا أَمَاتَنَا وَإِلَيْهِ النُّشُورُ — “সকল প্রশংসা আল্লাহর জন্য, যিনি আমাদেরকে মৃত্যু (নিদ্রা) দেওয়ার পর আবার জীবিত করেছেন এবং তাঁরই কাছে আমাদের পুনরুত্থান” (সহীহ বুখারী ৬৩১২)। এ ছাড়া ঘুমানোর আগে আয়াতুল কুরসী এবং সূরা ইখলাস, ফালাক ও নাস পড়ে শরীরে ফুঁ দেওয়া সুন্নাত।',
+    },
+    {
+      re: /^\s*(?:খাওয়ার\s*(?:শুরু(?:\s*ও\s*শেষের)?|আগের?|শেষের?|পরের?)\s*(?:দোয়া|দুআ)|খানা\s*খাওয়ার\s*দোয়া|eating\s*dua|dua\s*(?:before|after)\s*eating)(?:\s*(?:ক[িী]|বলো|বলুন|দাও|জানাও))?[।!?.,\s]*$/i,
+      title: 'খাওয়ার শুরু ও শেষের সহীহ মাসনূন দোয়া',
+      arabic: 'بِسْمِ اللَّهِ  |  الْحَمْدُ لِلَّهِ الَّذِي أَطْعَمَنِي هَذَا وَرَزَقَنِيهِ مِنْ غَيْرِ حَوْلٍ مِنِّي وَلَا قُوَّةٍ',
+      meaning: '• খাওয়ার শুরুতে: “বিসমিল্লাহ” (শুরুতে ভুলে গেলে মনে পড়ামাত্র বলবে: “বিসমিল্লাহি ফী আউয়ালিহী ওয়া আখিরিহী” — সুনান আবূ দাউদ ৩৭৬৭)।\n• খাওয়ার শেষে: “আলহামদুলিল্লাহিল্লাযী আত‘আমানী হাযা ওয়া রাযাকানীহি মিন গাইরি হাওলিন মিন্নী ওয়ালা কুওয়্যাহ” — সকল প্রশংসা আল্লাহর, যিনি আমার নিজস্ব কোনো প্রচেষ্টা ও শক্তি ছাড়াই আমাকে এ খাবার খাইয়েছেন এবং রিযিক দান করেছেন।',
+      virtue: 'ফযীলত: খাওয়ার শেষে এই দোয়া পাঠ করলে তার পূর্ববর্তী সগীরা গুনাহসমূহ ক্ষমা করে দেওয়া হয় (সুনান তিরমিযী ৩৪৫৮ — হাসান)।',
+    },
+    {
+      re: /^\s*(?:পিতা[-\s]*মাতার\s*জন্য\s*(?:দোয়া|দুআ)|মা[-\s]*বাবার\s*জন্য\s*(?:দোয়া|দুআ)|dua\s*for\s*parents)(?:\s*(?:ক[িী]|বলো|বলুন|দাও))?[।!?.,\s]*$/i,
+      title: 'পিতা-মাতার জন্য কুরআনে বর্ণিত শ্রেষ্ঠ দোয়া',
+      arabic: 'رَّبِّ ارْحَمْهُمَا كَمَا رَبَّيَانِي صَغِيرًا',
+      meaning: 'উচ্চারণ: রাব্বির হামহুমা কামা রাব্বাইয়ানী সাগীরা।\nঅর্থ: হে আমার রব! তাদের উভয়ের প্রতি দয়া করুন, যেভাবে তারা শৈশবে আমাকে লালন-পালন করেছেন।',
+      virtue: 'সূত্র: সূরা আল-ইসরা (বনী ইসরাঈল) ১৭:২৪; আরও পড়ুন: رَبَّنَا اغْفِرْ لِي وَلِوَالِدَيَّ وَلِلْمُؤْمِنِينَ يَوْمَ يَقُومُ الْحِسَابُ (সূরা ইবরাহীম ১৪:৪১)।',
+    },
+    {
+      re: /^\s*(?:জ্ঞান\s*(?:বৃদ্ধির|বাড়ানোর)\s*(?:দোয়া|দুআ)|ইলম\s*বৃদ্ধির\s*দোয়া|পড়াশোনার\s*দোয়া|dua\s*for\s*knowledge)(?:\s*(?:ক[িী]|বলো|বলুন|দাও))?[।!?.,\s]*$/i,
+      title: 'জ্ঞান ও উপকারী ইলম বৃদ্ধির দোয়া',
+      arabic: 'رَّبِّ زِدْنِي عِلْمًا  |  اللَّهُمَّ إِنِّي أَسْأَلُكَ عِلْمًا نَافِعًا، وَرِزْقًا طَيِّبًا، وَعَمَلًا مُتَقَبَّلًا',
+      meaning: '১) “রাব্বি যিদনী ইলমা” — হে আমার রব! আমার জ্ঞান বৃদ্ধি করে দিন (সূরা ত্ব-হা ২০:১১৪)।\n২) “আল্লাহুম্মা ইন্নী আসআলুকা ইলমান নাফি‘আন, ওয়া রিযকান তায়্যিবান, ওয়া আমালান মুতাকাব্বালান” — হে আল্লাহ! আমি আপনার কাছে উপকারী জ্ঞান, পবিত্র রিযিক এবং কবুলযোগ্য আমল প্রার্থনা করছি (সুনান ইবনু মাজাহ ৯২৫ — সহীহ)।',
+      virtue: 'ফযরের সালাতের সালাম ফেরানোর পর এই দোয়াটি পাঠ করা রাসূলুল্লাহ ﷺ-এর নিয়মিত সুন্নাত ছিল।',
+    },
   ];
 
   // Interactive Authentic Islamic Quiz Bank
@@ -688,7 +764,63 @@
       matchRe: /(?:^|\s)(?:ঘ|d|4|৪|সালাত|নামাজ|নামায|salat|namaz)(?:\s|$|[।)!?])/i,
       explain: 'সঠিক উত্তর **ঘ) সালাত (নামাজ)**! রাসূলুল্লাহ ﷺ বলেছেন: “কিয়ামতের দিন বান্দার সর্বপ্রথম যে আমলের হিসাব নেওয়া হবে তা হলো সালাত” (সুনান তিরমিযী ৪১৩, নাসাঈ ৪৬৫ — সহীহ)।',
     },
+    {
+      id: 4,
+      q: 'পবিত্র কুরআনের কোন সূরাকে কুরআনের এক-তৃতীয়াংশের সমতুল্য বলা হয়েছে?',
+      options: ['ক) সূরা আল-মুলক', 'খ) সূরা আল-ইখলাস', 'গ) সূরা আল-কাহফ', 'ঘ) সূরা আর-রাহমান'],
+      ansIdx: 1,
+      matchRe: /(?:^|\s)(?:খ|b|2|২|ইখলাস|ইখলাছ|ikhlas)(?:\s|$|[।)!?])/i,
+      explain: 'সঠিক উত্তর **খ) সূরা আল-ইখলাস**! সহীহ বুখারী (৫০১৫) ও সহীহ মুসলিমে বর্ণিত হয়েছে যে, সূরা আল-ইখলাস কুরআনের এক-তৃতীয়াংশের সমান মর্যাদাসম্পন্ন।',
+    },
+    {
+      id: 5,
+      q: 'জুমআর দিনে কোন সূরা তিলাওয়াত করলে দুই জুমআর মধ্যবর্তী সময় নূর দ্বারা আলোকিত থাকে?',
+      options: ['ক) সূরা ইয়াসীন', 'খ) সূরা আল-ওয়াকিয়াহ', 'গ) সূরা আল-কাহফ', 'ঘ) সূরা আদ-দুখান'],
+      ansIdx: 2,
+      matchRe: /(?:^|\s)(?:গ|c|3|৩|কাহফ|kahf)(?:\s|$|[।)!?])/i,
+      explain: 'সঠিক উত্তর **গ) সূরা আল-কাহফ**! সহীহ হাদীসে বর্ণিত হয়েছে, যে ব্যক্তি জুমআর দিন সূরা আল-কাহফ পাঠ করবে, তার জন্য দুই জুমআর মধ্যবর্তী সময় নূর দ্বারা আলোকিত থাকবে (মুস্তাদরাক হাকিম ২/৩৯৯, ইরওয়াউল গালীল ৬২৬ — সহীহ)।',
+    },
+    {
+      id: 6,
+      q: 'ইসলামের প্রথম মসজিদ কোনটি?',
+      options: ['ক) মসজিদে নববী', 'খ) মসজিদে কুবা', 'গ) মসজিদুল আকসা', 'ঘ) মসজিদে কিবলাতাইন'],
+      ansIdx: 1,
+      matchRe: /(?:^|\s)(?:খ|b|2|২|কুবা|quba)(?:\s|$|[।)!?])/i,
+      explain: 'সঠিক উত্তর **খ) মসজিদে কুবা**! রাসূলুল্লাহ ﷺ হিজরতের সময় মদীনায় পৌঁছে সর্বপ্রথম তাকওয়ার ভিত্তিতে মসজিদে কুবা প্রতিষ্ঠা করেন (সূরা আত-তাওবাহ ৯:১০৮, সহীহ বুখারী ৩৯০৬)।',
+    },
   ];
+
+  const HIJRI_MONTHS_BN = [
+    '', 'মুহাররম', 'সফর', 'রবিউল আউয়াল', 'রবিউস সানি',
+    'জুমাদাল উলা', 'জুমাদাল আখিরাহ', 'রজব', 'শা‘বান',
+    'রমযান', 'শাওয়াল', 'যিলকদ', 'যিলহজ্জ',
+  ];
+
+  function getHijriDateBn(dateObj = new Date()) {
+    try {
+      // Bangladesh moon-sighting typically aligns ~1 day after Umm al-Qura
+      const bdAdjusted = new Date(dateObj.getTime() - 24 * 3600 * 1000);
+      const fmt = new Intl.DateTimeFormat('en-TN-u-ca-islamic-umalqura', {
+        timeZone: 'Asia/Dhaka',
+        day: 'numeric',
+        month: 'numeric',
+        year: 'numeric',
+      });
+      const parts = Object.fromEntries(fmt.formatToParts(bdAdjusted).map((p) => [p.type, p.value]));
+      const hDay = Number(parts.day) || 1;
+      const hMonth = Number(parts.month) || 1;
+      const hYear = Number(String(parts.year || '').replace(/\D+/g, '')) || 1448;
+      return {
+        day: hDay,
+        month: hMonth,
+        month_name: HIJRI_MONTHS_BN[hMonth] || '',
+        year: hYear,
+        label: `${toBnDigitsStr(hDay)} ${HIJRI_MONTHS_BN[hMonth] || ''} ${toBnDigitsStr(hYear)} হিজরি`,
+      };
+    } catch (_) {
+      return { day: 12, month: 6, month_name: 'জুমাদাল আখিরাহ', year: 1448, label: 'হিজরি বর্ষপঞ্জি' };
+    }
+  }
 
   function dhakaNowText() {
     const now = new Date();
@@ -716,8 +848,11 @@
     else if (h24 >= 12 && h24 < 15) period = 'দুপুর';
     else if (h24 >= 15 && h24 < 18) period = 'বিকেল';
     else if (h24 >= 18 && h24 < 20) period = 'সন্ধ্যা';
-    return `বাংলাদেশ সময় অনুযায়ী এখন **${period} ${toBnDigitsStr(parts.hour)}:${toBnDigitsStr(parts.minute)}** মিনিট — আজ **${weekdays[parts.weekday] || parts.weekday}, ${toBnDigitsStr(parts.day)} ${months[Number(parts.month)]} ${toBnDigitsStr(parts.year)}**।`;
+    return `বাংলাদেশ সময় অনুযায়ী এখন **${period} ${toBnDigitsStr(parts.hour)}:${toBnDigitsStr(parts.minute)}** মিনিট — আজ **${weekdays[parts.weekday] || parts.weekday}, ${toBnDigitsStr(parts.day)} ${months[Number(parts.month)]} ${toBnDigitsStr(parts.year)}** *(আনুমানিক ${getHijriDateBn(now).label})*।`;
   }
+
+  const HIJRI_DATE_QUERY_RE = /(?:হিজরি\s*তারিখ\s*কত|আজকে?\s*আরবি\s*(?:তারিখ|মাস)\s*কত|আজ\s*হিজরি\s*কত|রমযান\s*কবে|রমজান\s*কবে|hijri\s*date)/i;
+  const RECENT_CONTENT_QUERY_RE = /(?:নতুন\s*ক[িী].*(?:লেখা|প্রবন্ধ|ফতোয়া|ভিডিও).*(?:এসেছে|প্রকাশিত|আছে)?|সাম্প্রতিক\s*(?:প্রকাশিত\s*)?(?:লেখা|ফতোয়া|ভিডিও|প্রকাশনা)|latest\s*(?:articles?|fatwas?|videos?))/i;
 
   const MY_CITY_RE = /^\s*(?:আমি\s+|আমার\s*(?:বাসা|বাড়ি|শহর|জেলা)\s*)(ঢাকা|ঢাকায়|চট্টগ্রাম|চট্টগ্রামে|চিটাগং|সিলেট|সিলেটে|রাজশাহী|রাজশাহীতে|খুলনা|খুলনায়|বরিশাল|বরিশালে|রংপুর|রংপুরে|ময়মনসিংহ|ময়মনসিংহে|কুমিল্লা|কুমিল্লায়|কক্সবাজার|বগুড়া|গাজীপুর|নারায়ণগঞ্জ|যশোর|দিনাজপুর|নোয়াখালী|ফেনী|পাবনা|টাঙ্গাইল|কুষ্টিয়া|ফরিদপুর)(?:\s*থাকি|\s*আছি|\s*থেকে\s*বলছি)?[।!?.,\s]*$/i;
   const QUIZ_REQ_RE = /^\s*(?:আমাকে\s*)?(?:একটা\s*|আরেকটা\s*|নতুন\s*)?(?:ইসলামিক\s*)?(?:কুইজ\s*(?:ধরো|দাও|খেলব|প্রশ্ন\s*করো)|ধাঁধা\s*ধরো|প্রশ্ন\s*ধরো|quiz\s*me|islamic\s*quiz|another\s*quiz)[।!?.,\s]*$/i;
@@ -759,10 +894,33 @@
     '1c6689e5f0e8e6', '0f69028005a2e5', '15b955e9a26004', '0d79bb28d3799a', '1c0f857f4d44b4', '1365d1764436fb',
     // science
     '18f80876ace1e6', '1e26e3ae023362', '009bf4d4e5b0a7', '0b06567908d8fb', '0aee80e7a8cec8',
-    // sharia
+    // sharia, women-in-masjid, beard, aisha, purity
     '0b08e5a2277cb1', '1228244de43364', '0b3c382d6936b5', '0c7724ccd2a0c5', '18d4eac2a82a69',
+    '144f5241a6ecf5', '09e6a7e4dc9812', '0311fba512ab9a', '1b4b346ecdd0a1', '03f651a988c811',
+    '0a4fb41f3833e7', '018deac31f383b', '1f249e55d5920f', '00043ee03b3362', '0dc4300795ece7',
   ]);
   const OTHER_RELIGION_RE = /(?:হিন্দু|হিন্দুধর্ম|বেদ|গীতা|মনুস্মৃতি|খ্রিস্টান|খ্রিষ্টান|বাইবেল|বৌদ্ধ|ইহুদি)/u;
+  const POEM_OR_NEWS_RE = /(?:পঞ্চম\s*শ্রেণী|ষষ্ঠ\s*শ্রেণী|সপ্তম\s*শ্রেণী|অষ্টম\s*শ্রেণী|দুর্ঘটনায়\s*মৃত্যু|শ্রমিকের\s*মৃত্যু|প্রাকৃতিক\s*গ্যাস|মুদ্রার\s*মওজুদ|স্বর্ণ\s*মওজুদে)/u;
+  // Canonical master DAWAH X document routes: ensures fundamental general questions always include
+  // the definitive comprehensive treatise/fatwa in Stage-2 candidate evaluation!
+  const CANONICAL_DOCTRINE_ROUTES = [
+    { re: /(?:ওযু|ওযূ|অজু|ওজু).*(?:ভঙ্গ|ভাঙ্গ|ভাঙ|নষ্ট)/u, guardNo: /(?:উট|গোশত|দুধ|স্রাব|রক্ত|কৃমি|ধূমপান|ব্যান্ডেজ|স্পর্শ|হাঁটু|হাসি|ঘুম)/u, keys: ['0a4fb41f3833e7'] },
+    { re: /(?:জানাযা|জানাজা).*(?:নিয়ম|পদ্ধতি|দোয়া|দুআ|কীভাবে|কিভাবে|তাকবীর)/u, guardNo: /(?:হিজড়া|গায়েবানা|মাসবূক|জুতা|কবর\s*উপর|মহিলা|দলবদ্ধ|হাত\s*তুলে)/u, keys: ['0dc4300795ece7', '1c9ba0b3dd232a'] },
+    { re: /(?:দাড়ি|শ্মশ্রু).*(?:ফরয|ফরজ|ওয়াজিব|বিধান|হুকুম)/u, guardNo: /(?:সামরিক|পুলিশ|চাকরি|ভ্রু|গোঁফ|সাদা|কলপ|মেহেদী)/u, keys: ['09e6a7e4dc9812'] },
+    { re: /(?:নারী|মহিলা).*(?:মসজিদ).*(?:সালাত|নামাজ|ছালাত|জায়েয)/u, guardNo: /(?:ইতিকাফ|মাসিক|হায়েয)/u, keys: ['144f5241a6ecf5', '16f9899beff63d'] },
+    { re: /(?:জুমা|জুমআ).*(?:দিন|আমল|আদব|সুন্নাত)/u, guardNo: /(?:খুতবা|দুইবার|মাদরাসা|রাস্তা)/u, keys: ['018deac31f383b'] },
+    { re: /(?:বিষন্নতা|হতাশা|মানসিক\s*অশান্তি)/u, guardNo: /(?:আত্মহত্যা)/u, keys: ['00043ee03b3362'] },
+    { re: /(?:আয়েশা|আয়িশা).*(?:বিবাহ|বিয়ে|বয়স)/u, guardNo: /(?:যুদ্ধ|উষ্ট্র)/u, keys: ['0311fba512ab9a', '1b4b346ecdd0a1'] },
+  ];
+
+  const MANDATORY_ANCHOR_STEMS = new Set(
+    [
+      'জানাযা', 'তাহাজ্জুদ', 'তারাবীহ', 'বিতর', 'আকীকা', 'ফিতরা', 'কুরবানী',
+      'তাবিজ', 'দাড়ি', 'হস্তমৈথুন', 'আত্মহত্যা', 'বিটকয়েন', 'ক্রিপ্টোকারেন্সি',
+      'শেয়ার', 'বীমা', 'ইনস্যুরেন্স', 'পরকীয়া', 'খুলা', 'মোহর', 'আয়েশা',
+      'ওযু', 'গোসল', 'তায়াম্মুম', 'হায়েয', 'ইতিকাফ', 'সুদ', 'বিকাশ',
+    ].map((w) => stemBn(foldBn(w)))
+  );
 
   function handleDialogueTurn(question, totalDocs, totalVids, history, t0) {
     const q = String(question || '').trim();
@@ -876,7 +1034,25 @@
       );
     }
 
-    // 0e. Authentic Masnoon Duas (Ayatul Kursi, Sayyidul Istighfar) on direct request
+    // 0e. Hijri Date & Ramadan Calendar Info
+    if (HIJRI_DATE_QUERY_RE.test(q) && !FIQH_RULING_MARKER_RE.test(q)) {
+      const hj = getHijriDateBn(new Date());
+      const monthsAway = (9 - hj.month + 12) % 12;
+      const ramadanNote =
+        hj.month === 9
+          ? 'আলহামদুলিল্লাহ, এখন মহিমান্বিত **রমযান** মাস চলছে!'
+          : `চাঁদ দেখার ওপর নির্ভর করে পবিত্র **রমযান** মাস আসতে আনুমানিক **${toBnDigitsStr(monthsAway || 12)} মাস** বাকি।`;
+      return makeChat(
+        `বাংলাদেশের চাঁদ দেখার আনুমানিক হিসাব অনুযায়ী আজ **${hj.label}**।`,
+        [
+          `${dhakaNowText()}\n${ramadanNote}`,
+          '*(দ্রষ্টব্য: ইসলামী শরীআতে হিজরি মাসের সঠিক শুরু ও শেষ জাতীয় চাঁদ দেখা কমিটির ঘোষণার ওপর নির্ভরশীল।)*',
+        ],
+        ['আজকের নামাজের সময়সূচি দাও', 'রমযান মাসের প্রস্তুতি কীভাবে নেব?', 'রোজা অবস্থায় ইনজেকশন নিলে কি রোজা ভাঙে?']
+      );
+    }
+
+    // 0f. Authentic Masnoon Duas on direct request
     if (q.length <= 70 && !/(?:ফযীলত\s*সত্য|সহীহ\s*কি|যঈফ|বিদআত)/u.test(q)) {
       for (const dua of MASNOON_DUAS) {
         if (dua.re.test(q)) {
@@ -1250,13 +1426,19 @@
       }
     }
 
-    const filteredParas = ansParas.filter(
-      (p) =>
-        !(
-          p.length < 42 &&
-          (p.includes('আসসালামু আলাইকুম') || p.includes('বিসমিল্লাহির') || p.includes('©') || p.includes('এক নজরে পয়েন্ট'))
-        )
-    );
+    const SERIES_NAV_LINE_RE = /^(?:(?:পর্ব|কিস্তি)\s*[\d০-৯]+|(?:১ম|২য়|৩য়|৪র্থ|৫ম|৬ষ্ঠ|৭ম|৮ম|৯ম|১০ম|শেষ)\s*(?:পর্ব|কিস্তি)|[।|/\-–—\s])+$/u;
+    const filteredParas = ansParas
+      .map((p) => p.replace(/\s*\[\d+\]\s*/g, ' ').replace(/\s{2,}/g, ' ').trim())
+      .filter(
+        (p) =>
+          p.length >= 4 &&
+          !/^\[\d+\]$/.test(p) &&
+          !SERIES_NAV_LINE_RE.test(p) &&
+          !(
+            p.length < 42 &&
+            (p.includes('আসসালামু আলাইকুম') || p.includes('বিসমিল্লাহির') || p.includes('©') || p.includes('এক নজরে পয়েন্ট'))
+          )
+      );
     const useParas = filteredParas.length ? filteredParas : ansParas;
 
     return {
@@ -1301,8 +1483,91 @@
     return joined;
   }
 
+  function findBestSectionWindow(doc, conceptGroups, totalCoreIdf) {
+    const paras = doc.paragraphs;
+    if (!paras || !paras.length || !conceptGroups.length) {
+      return { bestIdx: 0, windowCov: 0, isSubheadingMatch: false };
+    }
+    let bestIdx = 0;
+    let bestIdf = -1;
+    let bestHeadingHit = false;
+    const winSize = 3;
+
+    for (let i = 0; i < paras.length; i++) {
+      const sliceText = paras.slice(i, i + winSize).join(' ');
+      const wToks = new Set(tokenizeFolded(sliceText, true));
+      let idfSum = 0;
+      for (const grp of conceptGroups) {
+        for (const t of grp.terms) {
+          if (wToks.has(t)) {
+            idfSum += grp.idf;
+            break;
+          }
+        }
+      }
+      // Bonus if paragraph `i` itself is a crisp section heading (<= 75 chars) matching >= 2 query concepts!
+      let headingHit = false;
+      if (paras[i].length <= 75) {
+        const hToks = new Set(tokenizeFolded(paras[i], true));
+        let hMatched = 0;
+        for (const grp of conceptGroups) {
+          for (const t of grp.terms) {
+            if (hToks.has(t)) { hMatched++; break; }
+          }
+        }
+        if (hMatched >= Math.min(2, conceptGroups.length)) {
+          idfSum *= 1.18;
+          headingHit = true;
+        }
+      }
+      if (idfSum > bestIdf) {
+        bestIdf = idfSum;
+        bestIdx = i;
+        bestHeadingHit = headingHit;
+      }
+    }
+    return {
+      bestIdx,
+      windowCov: Math.min(1.0, bestIdf / Math.max(totalCoreIdf, 1.0)),
+      isSubheadingMatch: bestHeadingHit,
+    };
+  }
+
   function selectBestParagraphs(doc, coreSet, expSet, maxParas = 4, maxChars = 1450) {
-    const paras = doc.paragraphs.filter((p) => p.length >= 18);
+    const rawParas = doc.paragraphs;
+    if (!rawParas.length) return doc.opening_ruling ? [doc.opening_ruling] : [];
+
+    // If Stage-2 discovered a deep section window inside a long article (e.g., "ওযূ ভঙ্গের কারণ সমূহ" at char 5300),
+    // extract directly from that exact subsection so the reader gets the precise answer!
+    if (
+      doc.doc_type === 'article' &&
+      typeof doc.best_window_idx === 'number' &&
+      doc.best_window_idx > 0 &&
+      (doc.best_window_cov >= 0.72 || doc.best_window_heading)
+    ) {
+      const out = [];
+      let total = 0;
+      for (let k = doc.best_window_idx; k < Math.min(rawParas.length, doc.best_window_idx + 5); k++) {
+        const p = rawParas[k];
+        if (!p) continue;
+        // Merge short section heading with next paragraph for clean direct_answer
+        if (out.length === 0 && p.length <= 70 && k + 1 < rawParas.length) {
+          const merged = `${p} — ${rawParas[k + 1]}`;
+          out.push(trimCleanly(merged, 540));
+          total += merged.length;
+          k++;
+          continue;
+        }
+        const trimmed = trimCleanly(p, out.length === 0 ? 540 : 480);
+        if (total + trimmed.length > maxChars && out.length >= 2) break;
+        out.push(trimmed);
+        total += trimmed.length;
+        if (out.length >= maxParas) break;
+      }
+      if (out.length) return out;
+    }
+
+    const paras = rawParas.filter((p) => p.length >= 18);
     if (!paras.length) return doc.opening_ruling ? [doc.opening_ruling] : [];
 
     const chosen = [];
@@ -1372,6 +1637,29 @@
 
     getPrayerTimes(cityInput = 'dhaka', dateObj = new Date()) {
       return computePrayerSchedule(cityInput, dateObj);
+    },
+
+    getHijriDate(dateObj = new Date()) {
+      return getHijriDateBn(dateObj);
+    },
+
+    async getRecent() {
+      return fetchWithFallback('recent-data.json');
+    },
+
+    async getLiveStreams() {
+      try {
+        const res = await fetch(`${PRIMARY_BASE}/live.json?t=${Date.now()}`, { cache: 'no-store' });
+        if (!res.ok) return [];
+        const data = await res.json();
+        const updated = Date.parse((data && data.updated) || '');
+        if (!isFinite(updated) || Date.now() - updated > 45 * 60 * 1000) return [];
+        return (Array.isArray(data.live) ? data.live : []).filter(
+          (v) => v && /^[A-Za-z0-9_-]{11}$/.test(String(v.id || ''))
+        );
+      } catch (_) {
+        return [];
+      }
     },
 
     getSeriesIndex() {
@@ -1461,7 +1749,7 @@
           channel_title: v.channelTitle || 'DAWAH X Video',
           published_at: (v.publishedAt || '').slice(0, 10),
           score: Number(sc.toFixed(2)),
-          dawahx_url: `${SITE_URL}/read.html?v=${v.id}`,
+          dawahx_url: `${SITE_URL}/videos.html?v=${encodeURIComponent(v.id)}`,
         }));
       } catch (_) {
         return [];
@@ -1488,6 +1776,53 @@
       const t0 = performance.now();
       const preDocs = (this.stats && this.stats.texts) || (this.meta && this.meta.n) || 24207;
       const preVids = (this.stats && this.stats.videos) || 9310;
+
+      // Live Recent Publications Query (`recent-data.json`)
+      if (RECENT_CONTENT_QUERY_RE.test(String(question || '').trim())) {
+        try {
+          const rec = await this.getRecent();
+          if (rec && Array.isArray(rec.texts)) {
+            const topTexts = rec.texts.slice(0, 5);
+            const topVids = (rec.videos || []).slice(0, 4).map((v) => ({
+              video_id: v.id,
+              title: v.t,
+              channel_title: v.c || 'DAWAH X Video',
+              published_at: String(v.d || '').slice(0, 10),
+              dawahx_url: `${SITE_URL}/videos.html?v=${encodeURIComponent(v.id)}`,
+            }));
+            const srcCards = topTexts.map((x, idx) => ({
+              rank: idx + 1,
+              key: x.k,
+              title: x.t,
+              clean_title: cleanTitleText(x.t),
+              source_code: x.s,
+              source_name: (rec.names && rec.names[x.s]) || SOURCE_NAMES[x.s] || x.s,
+              category: (rec.names && rec.names[x.s]) || x.s,
+              doc_type: 'article',
+              pub_date: x.shown || x.d || '',
+              dawahx_url: `${SITE_URL}/read.html?k=${x.k}`,
+              share_url: `${SITE_URL}/s/${x.k}.html`,
+              confidence: 1.0,
+            }));
+            return {
+              status: 'conversational',
+              is_chat: true,
+              query: question,
+              headline: '',
+              direct_answer: 'আলহামদুলিল্লাহ! **DAWAH X**-এ সদ্য প্রকাশিত সাম্প্রতিক লেখা, ফতোয়া ও ভিডিওগুলো নিচে তুলে ধরা হলো:',
+              explanation_paragraphs: ['যেকোনো লেখায় ক্লিক করে এখানেই সম্পূর্ণ পড়তে পারেন অথবা নিচের সাম্প্রতিক ভিডিওগুলো দেখতে পারেন।'],
+              additional_perspectives: [],
+              evidences: [],
+              sources: srcCards,
+              videos: topVids,
+              follow_ups: topTexts.slice(0, 3).map((x) => summarizeLongHeadline(cleanTitleText(x.t))),
+              confidence: 1.0,
+              latency_ms: Math.max(1, Math.round(performance.now() - t0)),
+              ask_team_url: `${SITE_URL}/ask.html`,
+            };
+          }
+        } catch (_) {}
+      }
 
       // Fast-path: respond instantaneously to natural everyday conversation while warming corpus index in background
       const chatReply = handleDialogueTurn(question, preDocs, preVids, history, t0);
@@ -1615,17 +1950,18 @@
           docMatchedIdf[id] += grp.idf;
         }
         for (const id of bodyHits) {
-          docScores[id] += grp.idf * 1.05;
+          docScores[id] += grp.idf * 1.18;
           if (!titleHits.has(id)) {
-            docMatchedIdf[id] += grp.idf * 0.78;
+            docMatchedIdf[id] += grp.idf * 0.85;
           }
         }
       }
 
       totalCoreIdf = Math.max(totalCoreIdf, 1.0);
 
-      // Collect top Stage-1 candidates
+      // Collect top Stage-1 candidates (plus highest full-body-coverage treatises!)
       const stage1 = [];
+      const bodyCompletePool = [];
       for (let id = 0; id < N; id++) {
         if (docScores[id] <= 0.1) continue;
         // Quick side bit pre-filter when fatwa/dawah filter requested
@@ -1636,19 +1972,44 @@
         const cov = Math.min(1.0, docMatchedIdf[id] / totalCoreIdf);
         if (cov < 0.22) continue;
         const titleCov = Math.min(1.0, docTitleMatchedIdf[id] / totalCoreIdf);
-        const composite = docScores[id] * (0.32 + 0.48 * cov + 0.20 * titleCov);
-        stage1.push([id, composite, cov, titleCov]);
+        const fullBodyBonus = cov >= 0.82 ? 1.18 : 1.0;
+        const composite = docScores[id] * (0.34 + 0.48 * cov + 0.18 * titleCov) * fullBodyBonus;
+        const entry = [id, composite, cov, titleCov];
+        stage1.push(entry);
+        if (cov >= 0.80 && titleCov < 0.50) bodyCompletePool.push(entry);
       }
 
       stage1.sort((a, b) => b[1] - a[1]);
-      const topStage1 = stage1.slice(0, 18);
+      bodyCompletePool.sort((a, b) => b[2] - a[2] || b[1] - a[1]);
+      const topStage1 = stage1.slice(0, 24);
+      const pickedIds = new Set(topStage1.map((x) => x[0]));
+      for (const bc of bodyCompletePool.slice(0, 6)) {
+        if (!pickedIds.has(bc[0])) {
+          topStage1.push(bc);
+          pickedIds.add(bc[0]);
+        }
+      }
 
       if (!topStage1.length) {
         return this._notFoundPayload(question, [], [], t0);
       }
 
-      // Fetch full DAWAH X bucket records for top 18 candidates in parallel
+      // Inject any matching Canonical Master Doctrine keys so comprehensive treatises are never missed!
+      const canonicalBoostKeys = new Set();
+      for (const route of CANONICAL_DOCTRINE_ROUTES) {
+        if (route.re.test(augQuery) && !route.guardNo.test(augQuery)) {
+          for (const rk of route.keys) canonicalBoostKeys.add(rk);
+        }
+      }
+
+      // Fetch full DAWAH X bucket records for top candidates + canonical routes in parallel
       const candKeys = topStage1.map(([id]) => this.keys.slice(id * 14, id * 14 + 14));
+      for (const ck of canonicalBoostKeys) {
+        if (!candKeys.includes(ck)) {
+          candKeys.push(ck);
+          topStage1.push([-1, (topStage1[0]?.[1] || 10.0) * 0.92, 0.92, 0.85]);
+        }
+      }
       const uniqueBuckets = [...new Set(candKeys.map((k) => k.slice(-3)))];
       const bucketObjs = {};
       await Promise.all(
@@ -1657,18 +2018,24 @@
         })
       );
 
-      // Stage 2: Full-Text Specificity Reranking, Polarity Guard & Curated Graph Calibration
+      // Stage 2: Full-Text Passage-Window Reranking, Mandatory Anchor Guard & Curated Graph Calibration
       const sortedGroups = [...conceptGroups].sort((a, b) => b.idf - a.idf);
       const topSubjectTerms = sortedGroups[0] ? sortedGroups[0].terms : new Set();
+      const mandatoryGroups = conceptGroups.filter((g) => {
+        for (const t of g.terms) if (MANDATORY_ANCHOR_STEMS.has(t)) return true;
+        return false;
+      });
       const queryHasOtherRel = OTHER_RELIGION_RE.test(question);
       const queryHasNegException = /(?:না\s*মেনে|ছাড়া\s*পড়লে|সন্দেহ|৪১\s*দিন|ভুলে\s*গেলে)/u.test(question);
+      const queryHasPhysicalInjury = /(?:হাত|পা|ব্যান্ডেজ|প্লাস্টার|ক্ষত|যখম)/u.test(question);
+      const queryHasNarrowTrigger = /(?:উট|গোশত|কৃমি|ধূমপান|দুধ|হাঁটু|পেঁয়াজ|রসুন|ছানা|জুতা|হিজড়া|মুনাজাত)/u.test(question);
 
       const reranked = [];
       const seenTitles = new Set();
       const maxS1 = topStage1[0][1] || 1.0;
 
       for (let idx = 0; idx < topStage1.length; idx++) {
-        const [id, s1Score, cov, titleCov] = topStage1[idx];
+        const [id, s1Score, rawCov, rawTitleCov] = topStage1[idx];
         const key = candKeys[idx];
         const raw = bucketObjs[key.slice(-3)]?.[key];
         if (!raw) continue;
@@ -1685,14 +2052,40 @@
         if (seenTitles.has(ft)) continue;
         seenTitles.add(ft);
 
+        // Scan entire document for highest-density passage/section window!
+        const winInfo = findBestSectionWindow(doc, conceptGroups, totalCoreIdf);
+        doc.best_window_idx = winInfo.bestIdx;
+        doc.best_window_cov = winInfo.windowCov;
+        doc.best_window_heading = winInfo.isSubheadingMatch;
+
+        const cov = Math.max(rawCov, winInfo.windowCov * 0.94);
+        const titleCov = winInfo.isSubheadingMatch ? Math.max(rawTitleCov, winInfo.windowCov * 0.85) : rawTitleCov;
+
+        const winSlice = doc.paragraphs.slice(winInfo.bestIdx, winInfo.bestIdx + 3).join(' ');
         const fullDocToks = new Set(
-          tokenizeFolded(`${doc.clean_title} ${doc.question_context} ${doc.opening_ruling} ${doc.answer_body.slice(0, 1800)}`, true)
+          tokenizeFolded(`${doc.clean_title} ${doc.question_context} ${doc.opening_ruling} ${winSlice}`, true)
         );
         const titleTokList = tokenizeFolded(doc.clean_title, true);
 
         let topSubjHit = 0;
         for (const st of topSubjectTerms) {
           if (fullDocToks.has(st)) { topSubjHit = 1; break; }
+        }
+
+        // Mandatory subject-anchor guard (e.g., জানাযা, তাহাজ্জুদ, দাড়ি, আয়েশা, ওযু must appear!)
+        let missingAnchorPenalty = 0.0;
+        if (mandatoryGroups.length > 0) {
+          let missingAnchors = 0;
+          for (const mg of mandatoryGroups) {
+            let hit = false;
+            for (const t of mg.terms) {
+              if (fullDocToks.has(t)) { hit = true; break; }
+            }
+            if (!hit) missingAnchors++;
+          }
+          if (missingAnchors > 0) {
+            missingAnchorPenalty = -0.26 * (missingAnchors / mandatoryGroups.length);
+          }
         }
 
         // Adjacent query bigram proximity bonus in title
@@ -1711,21 +2104,31 @@
 
         const isQaBonus = ['fatwa', 'qa', 'rebuttal'].includes(doc.doc_type) ? 0.05 : 0.0;
         const dalilBonus = doc.evidences.length >= 1 && doc.answer_body.length >= 200 ? 0.05 : 0.0;
-        const curatedBonus = CURATED_TOPIC_KEYS.has(key) && cov >= 0.45 ? 0.09 : 0.0;
+        const curatedBonus = (CURATED_TOPIC_KEYS.has(key) && cov >= 0.45 ? 0.11 : 0.0) + (canonicalBoostKeys.has(key) ? 0.18 : 0.0);
 
-        // Guard 1: Penalize ultra-short URL-only stubs so full scholarly fatwas rank #1
+        // Guard 1: Penalize ultra-short URL-only stubs, student poems, and secular accident/mineral news briefs
         const isThinStub =
           doc.answer_body.length < 115 ||
           (doc.answer_body.length < 190 && /https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)/i.test(doc.answer_body));
-        const stubPenalty = isThinStub ? -0.19 : 0.0;
+        const isPoemOrNews = POEM_OR_NEWS_RE.test(`${doc.clean_title} ${doc.answer_body.slice(0, 500)}`);
+        const stubPenalty = (isThinStub ? -0.19 : 0.0) + (isPoemOrNews ? -0.28 : 0.0);
 
         // Guard 2: Penalize comparative-religion titles ("হিন্দু ধর্মে...") when user asked about Islam
         const otherRelPenalty = !queryHasOtherRel && OTHER_RELIGION_RE.test(doc.clean_title) ? -0.26 : 0.0;
 
-        // Guard 3: Prefer direct canonical questions over narrow negated/conditional reader scenarios
+        // Guard 3: Prefer direct canonical questions over narrow negated/conditional/injury scenarios
         let specificityAdj = 0.0;
         if (!queryHasNegException && /(?:না\s*মেনে|৪১\s*দিন|সন্দেহ\s*হলে)/u.test(doc.clean_title)) {
           specificityAdj -= 0.11;
+        }
+        if (!queryHasPhysicalInjury && /(?:হাত-পা\s*ভাঙ্গার|ব্যান্ডেজ)/u.test(doc.clean_title)) {
+          specificityAdj -= 0.22;
+        }
+        if (!queryHasNarrowTrigger && /(?:উটের\s*গোশত|কৃমি\s*বের|ধূমপান\s*করলে|দুধ\s*পান|হাঁটুর\s*উপরে|ছানা\s*পড়া|জুতা\s*পরে|হিজড়া|সম্মিলিতভাবে\s*মুনাজাত)/u.test(doc.clean_title)) {
+          specificityAdj -= 0.19;
+        }
+        if (winInfo.isSubheadingMatch && winInfo.windowCov >= 0.85) {
+          specificityAdj += 0.14;
         }
         if (doc.clean_title.length <= 95 && titleCov >= 0.65) {
           specificityAdj += 0.04;
@@ -1745,6 +2148,7 @@
           curatedBonus +
           stubPenalty +
           otherRelPenalty +
+          missingAnchorPenalty +
           specificityAdj;
 
         if (cov < 0.30 && topSubjHit === 0) conf *= 0.35;
@@ -1940,10 +2344,13 @@
         headline: displayHeadline,
         reader_scenario: readerScenario,
         series_info: seriesInfo,
+        primary_source: proseDoc.source_code,
+        primary_source_code: proseDoc.source_code,
         primary_source_name: proseDoc.source_name,
         primary_doc_type: proseDoc.doc_type,
         primary_key: proseDoc.key,
         primary_url: proseDoc.dawahx_url,
+        share_url: proseDoc.share_url,
         direct_answer: directAnswer,
         explanation_paragraphs: explanationParas,
         extra_body: trimCleanly(proseDoc.answer_body, 2600),

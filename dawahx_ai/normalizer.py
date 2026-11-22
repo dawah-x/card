@@ -137,7 +137,13 @@ RAW_SYNONYM_GROUPS: List[List[str]] = [
     ["ওমরা", "উমরা", "ওমরাহ", "উমরাহ"],
     ["মসজিদ", "মাসজিদ"],
     ["বিতর", "বিতির", "বেতের"],
-    ["তারাবি", "তারাবীহ", "তারাবিহ", "কিয়ামুল লাইল", "তাহাজ্জুদ"],
+    ["তারাবি", "তারাবীহ", "তারাবিহ"],
+    ["তাহাজ্জুদ", "কিয়ামুল লাইল"],
+    ["ভঙ্গ", "ভঙ্গের", "ভাঙ্গা", "ভাঙ্গার", "ভাঙা", "ভাঙার", "ভেঙে", "ভাঙে", "নষ্ট"],
+    ["আয়েশা", "আয়িশা"],
+    ["জানাযা", "জানাজা", "মাইয়্যেত"],
+    ["বিষন্নতা", "হতাশা", "দুশ্চিন্তা", "অশান্তি"],
+    ["বিবর্তনবাদ", "ডারউইনবাদ", "ডারউইন"],
     ["সেহরি", "সাহরি", "সাহারি", "সাহরী"],
     ["ইফতার", "ইফতারি"],
     ["বিয়ে", "বিবাহ", "নিকাহ", "শাদি"],
@@ -504,8 +510,22 @@ IDENTITY_PATTERNS = re.compile(
 )
 
 
+_BANGLISH_INFLECTIONS = ("gulo", "gula", "der", "ter", "tar", "tir", "er", "te", "ke", "ta", "ti", "ra", "r", "s", "ing")
+_COMPOUND_BN = [
+    ("পিতামাতা", "পিতা মাতা"),
+    ("মাবাবা", "মা বাবা পিতা মাতা"),
+    ("স্বামীস্ত্রী", "স্বামী স্ত্রী"),
+    ("ভাইবোন", "ভাই বোন"),
+    ("ছেলেমেয়ে", "ছেলে মেয়ে"),
+    ("শবেবরাত", "শবে বরাত"),
+    ("শবেকদর", "শবে কদর"),
+    ("ঈদুলফিতর", "ঈদুল ফিতর"),
+    ("ঈদুলআযহা", "ঈদুল আযহা"),
+]
+
+
 def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
-    """Replace known Latin/Banglish/English tokens with Bengali Islamic terms and strip Banglish function words."""
+    """Replace known Latin/Banglish/English tokens (including inflections) with Bengali Islamic terms."""
     mapped_phrases: List[str] = []
 
     def _repl(match: re.Match[str]) -> str:
@@ -514,15 +534,12 @@ def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
         if w in BANGLISH_AND_EN_MAP:
             mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
             return f" {BANGLISH_AND_EN_MAP[w]} "
-        if len(w) >= 5 and w.endswith("er") and w[:-2] in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-2]])
-            return f" {BANGLISH_AND_EN_MAP[w[:-2]]} "
-        if len(w) >= 4 and w.endswith("s") and w[:-1] in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-1]])
-            return f" {BANGLISH_AND_EN_MAP[w[:-1]]} "
-        if len(w) >= 5 and w.endswith("ing") and w[:-3] in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-3]])
-            return f" {BANGLISH_AND_EN_MAP[w[:-3]]} "
+        for suf in _BANGLISH_INFLECTIONS:
+            if len(w) - len(suf) >= 3 and w.endswith(suf):
+                stem = w[: -len(suf)]
+                if stem in BANGLISH_AND_EN_MAP:
+                    mapped_phrases.append(BANGLISH_AND_EN_MAP[stem])
+                    return f" {BANGLISH_AND_EN_MAP[stem]} "
         if len(w) == 1 or w in BANGLISH_STOP_WORDS:
             return " "
         return raw_w
@@ -533,7 +550,11 @@ def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
 
 def tokenize_folded(text: str, stem: bool = True) -> List[str]:
     """Tokenize into folded (and optionally stemmed) Bengali/Latin tokens."""
-    folded = fold_bn(text)
+    expanded_text = text
+    for comp, split_form in _COMPOUND_BN:
+        if comp in expanded_text:
+            expanded_text = expanded_text.replace(comp, split_form)
+    folded = fold_bn(expanded_text)
     # Remove Arabic script tokens from Bengali lexical tokens
     folded = _ARABIC_RE.sub(" ", folded)
     raw_tokens = _TOKEN_RE.findall(folded)

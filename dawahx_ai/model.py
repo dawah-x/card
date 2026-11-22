@@ -721,7 +721,7 @@ class DawahXAIModel:
                     "channel_title": vr["channel_title"],
                     "published_at": vr["published_at"][:10] if vr["published_at"] else "",
                     "score": round(float(scores[vi]), 2),
-                    "dawahx_url": f"{DAWAHX_SITE_URL}/read.html?v={vid_id}",
+                    "dawahx_url": f"{DAWAHX_SITE_URL}/videos.html?v={vid_id}",
                     "thumbnail": f"https://i.ytimg.com/vi/{vid_id}/mqdefault.jpg",
                 }
             )

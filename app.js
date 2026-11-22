@@ -38,6 +38,13 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
+  const CITY_KEY = 'dawahx_user_city_v4';
+  const THEME_KEY = 'dawahx_theme_v4';
+  const FONTSIZE_KEY = 'dawahx_fontsize_v4';
+
+  let selectedCityId = localStorage.getItem(CITY_KEY) || 'dhaka';
+  let activeQuoteMeta = { title: '', source: '', url: '', theme: 'dark', blob: null };
+  let deferredInstallPrompt = null;
 
   function loadStoredJson(key, fallback) {
     try {
@@ -98,9 +105,9 @@
     const btn = document.getElementById('livePrayerBtn');
     if (!btn || !window.DawahXBrowserAI || !window.DawahXBrowserAI.getPrayerTimes) return;
     try {
-      const p = window.DawahXBrowserAI.getPrayerTimes('dhaka');
-      btn.textContent = `🕌 ${p.next_waqt_name}: ${p.next_waqt_time}`;
-      btn.title = `ঢাকা — বর্তমান: ${p.current_waqt} | পরবর্তী (${p.next_waqt_name}): ${p.next_waqt_time} (${p.countdown_bn} বাকি)`;
+      const p = window.DawahXBrowserAI.getPrayerTimes(selectedCityId);
+      btn.textContent = `🕌 ${p.city} · ${p.next_waqt_name}: ${p.next_waqt_time}`;
+      btn.title = `${p.city} — বর্তমান: ${p.current_waqt} | পরবর্তী (${p.next_waqt_name}): ${p.next_waqt_time} (${p.countdown_bn} বাকি)`;
     } catch (_) {}
   }
 
@@ -121,6 +128,10 @@
   const readerDrawer = document.getElementById('readerDrawer');
   const closeDrawerBtn = document.getElementById('closeDrawerBtn');
   const modelModal = document.getElementById('modelModal');
+  const prayerModal = document.getElementById('prayerModal');
+  const quoteCardModal = document.getElementById('quoteCardModal');
+  const videoModal = document.getElementById('videoModal');
+  const videoModalIframe = document.getElementById('videoModalIframe');
   const openModelModalBtn = document.getElementById('openModelModalBtn');
   const closeModalBtn = document.getElementById('closeModalBtn');
   const syncCorpusBtn = document.getElementById('syncCorpusBtn');
@@ -129,6 +140,12 @@
     sidebar.classList.remove('open');
     readerDrawer.classList.remove('open');
     modelModal.classList.remove('open');
+    if (prayerModal) prayerModal.classList.remove('open');
+    if (quoteCardModal) quoteCardModal.classList.remove('open');
+    if (videoModal) {
+      videoModal.classList.remove('open');
+      if (videoModalIframe) videoModalIframe.src = '';
+    }
     backdrop.classList.remove('open');
   }
 
@@ -346,6 +363,39 @@
       const next = loadStoredJson(BOOKMARKS_KEY, []).filter((b) => b.key !== key);
       saveStoredJson(BOOKMARKS_KEY, next);
       renderSidebarLists();
+      return;
+    }
+
+    const closeModalTrigger = e.target.closest('[data-close-modal]');
+    if (closeModalTrigger) {
+      closeOverlays();
+      return;
+    }
+
+    const openPrayerTrigger = e.target.closest('[data-open-prayer-modal]');
+    if (openPrayerTrigger) {
+      openPrayerModal();
+      return;
+    }
+
+    const playVidTrigger = e.target.closest('[data-play-video]');
+    if (playVidTrigger) {
+      e.preventDefault();
+      openVideoModal(
+        playVidTrigger.getAttribute('data-play-video'),
+        playVidTrigger.getAttribute('data-video-title') || 'DAWAH X Video'
+      );
+      return;
+    }
+
+    const quoteBtn = e.target.closest('[data-quote-card]');
+    if (quoteBtn) {
+      openQuoteCardModal({
+        text: quoteBtn.getAttribute('data-quote-card') || '',
+        title: quoteBtn.getAttribute('data-quote-title') || '',
+        source: quoteBtn.getAttribute('data-quote-source') || 'DAWAH X',
+        key: quoteBtn.getAttribute('data-quote-key') || '',
+      });
       return;
     }
   });
@@ -592,13 +642,13 @@
       const vCards = data.videos
         .map(
           (v) => `
-          <a href="${escHtml(v.dawahx_url)}" target="_blank" rel="noopener noreferrer" class="video-ref-card">
+          <button type="button" class="video-ref-card" data-play-video="${escHtml(v.video_id || '')}" data-video-title="${escHtml(v.title)}" style="text-align:left;cursor:pointer;width:100%;">
             <div class="vid-play-icon">▶</div>
             <div class="vid-info">
               <b>${escHtml(v.title)}</b>
               <small>${escHtml(v.channel_title || 'DAWAH X Video')}</small>
             </div>
-          </a>`
+          </button>`
         )
         .join('');
       videosHtml = `
@@ -716,6 +766,19 @@
       ? `<div class="ai-conv-intro">${formatRichText(data.conversational_intro)}</div>`
       : '';
 
+    const quoteSnippet = String(data.direct_answer || '')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .slice(0, 260);
+    const quoteCardBtnHtml = `
+      <button type="button" class="mini-btn"
+        data-quote-card="${escHtml(quoteSnippet)}"
+        data-quote-title="${escHtml(data.headline)}"
+        data-quote-source="${escHtml(data.primary_source_name || 'DAWAH X')}"
+        data-quote-key="${escHtml(data.primary_key || '')}">
+        🖼 ফতোয়া কার্ড
+      </button>`;
+
     card.innerHTML = `
       <div class="ai-meta-top">
         ${statusBadgeHtml}
@@ -738,6 +801,7 @@
       ${followUpHtml}
       <div class="card-actions-bar">
         <button type="button" class="mini-btn" data-speak-text="${escHtml(ttsFullText)}">🔊 শুনুন</button>
+        ${quoteCardBtnHtml}
         ${bookmarkBtnHtml}
         <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 কপি</button>
         <a href="${escHtml(waShareUrl)}" target="_blank" rel="noopener noreferrer" class="mini-btn">📲 WhatsApp শেয়ার</a>
@@ -967,8 +1031,327 @@
     voiceBtn.style.display = 'none';
   }
 
+  // ===== v4.0 24-District Prayer & Hijri Modal =====
+  const prayerCitySelect = document.getElementById('prayerCitySelect');
+  function renderPrayerModalBody() {
+    if (!window.DawahXBrowserAI || !prayerModal) return;
+    if (prayerCitySelect && !prayerCitySelect.options.length && Array.isArray(window.DawahXBrowserAI.cities)) {
+      prayerCitySelect.innerHTML = window.DawahXBrowserAI.cities
+        .map((c) => `<option value="${escHtml(c.id)}">${escHtml(c.bn)} জেলা</option>`)
+        .join('');
+    }
+    if (prayerCitySelect) prayerCitySelect.value = selectedCityId;
+
+    const sched = window.DawahXBrowserAI.getPrayerTimes(selectedCityId);
+    const hj = window.DawahXBrowserAI.getHijriDate ? window.DawahXBrowserAI.getHijriDate() : { label: '' };
+    const hjEl = document.getElementById('prayerHijriLabel');
+    if (hjEl) hjEl.textContent = hj.label;
+
+    const bannerEl = document.getElementById('prayerCountdownBanner');
+    if (bannerEl) {
+      bannerEl.innerHTML = `
+        <span>🕌 বর্তমান ওয়াক্ত: <strong>${escHtml(sched.current_waqt)}</strong></span>
+        <span>⏳ পরবর্তী (<strong>${escHtml(sched.next_waqt_name)}</strong>): <strong>${escHtml(sched.next_waqt_time)}</strong> (${escHtml(sched.countdown_bn)} বাকি)</span>
+      `;
+    }
+
+    const tm = sched.times;
+    const rows = [
+      ['সেহরির শেষ সময়', tm.sehriEnd.label, false],
+      ['ফজর শুরু', tm.fajr.label, sched.next_waqt_name === 'ফজর'],
+      ['সূর্যোদয়', tm.sunrise.label, sched.next_waqt_name === 'সূর্যোদয়'],
+      ['যোহর', tm.dhuhr.label, sched.next_waqt_name === 'যোহর'],
+      ['আসর (শাফেঈ / আহলে হাদীস)', tm.asr.label, sched.next_waqt_name === 'আসর'],
+      ['আসর (হানাফী)', tm.asrHanafi.label, false],
+      ['মাগরিব / ইফতার', tm.maghrib.label, sched.next_waqt_name === 'মাগরিব / ইফতার'],
+      ['এশা', tm.isha.label, sched.next_waqt_name === 'এশা'],
+    ];
+    const gridEl = document.getElementById('prayerGridTable');
+    if (gridEl) {
+      gridEl.innerHTML = rows
+        .map(
+          ([lbl, val, hi]) => `
+          <div class="prayer-cell ${hi ? 'highlight' : ''}">
+            <span>${escHtml(lbl)}</span>
+            <strong>${escHtml(val)}</strong>
+          </div>`
+        )
+        .join('');
+    }
+  }
+
+  function openPrayerModal() {
+    closeOverlays();
+    renderPrayerModalBody();
+    if (prayerModal) {
+      prayerModal.classList.add('open');
+      backdrop.classList.add('open');
+    }
+  }
+
+  document.getElementById('livePrayerBtn')?.addEventListener('click', openPrayerModal);
+  prayerCitySelect?.addEventListener('change', () => {
+    selectedCityId = prayerCitySelect.value || 'dhaka';
+    localStorage.setItem(CITY_KEY, selectedCityId);
+    updateLivePrayerBadge();
+    renderPrayerModalBody();
+  });
+
+  // ===== v4.0 1080x1080 HD Quote / Fatwa Card Generator =====
+  const quoteCanvas = document.getElementById('quoteCanvas');
+  const quoteTextEl = document.getElementById('quoteCardText');
+
+  function wrapCanvasLines(ctx, text, maxWidth) {
+    const out = [];
+    for (const para of String(text || '').split('\n')) {
+      const words = para.trim().split(/\s+/).filter(Boolean);
+      let line = '';
+      for (const w of words) {
+        const test = line ? `${line} ${w}` : w;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          out.push(line);
+          line = w;
+        } else {
+          line = test;
+        }
+      }
+      if (line) out.push(line);
+    }
+    return out;
+  }
+
+  async function drawQuoteCardCanvas() {
+    if (!quoteCanvas || !quoteTextEl) return;
+    if (document.fonts && document.fonts.ready) {
+      try { await document.fonts.ready; } catch (_) {}
+    }
+    const ctx = quoteCanvas.getContext('2d');
+    const isLight = activeQuoteMeta.theme === 'light';
+
+    // Background & ornamental double Islamic border
+    ctx.fillStyle = isLight ? '#faf7ee' : '#07171c';
+    ctx.fillRect(0, 0, 1080, 1080);
+
+    ctx.strokeStyle = isLight ? '#b48216' : '#d8aa3e';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(48, 48, 984, 984);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(62, 62, 956, 956);
+
+    // Header badge
+    ctx.fillStyle = isLight ? '#8a5f06' : '#ffd56a';
+    ctx.font = '700 38px "Hind Siliguri", sans-serif';
+    ctx.fillText('DAWAH X  ·  দলিলভিত্তিক ইসলামিক উত্তর', 100, 138);
+
+    // Question / Title line
+    if (activeQuoteMeta.title) {
+      ctx.fillStyle = isLight ? '#185c47' : '#34d399';
+      ctx.font = '600 30px "Hind Siliguri", sans-serif';
+      const tLines = wrapCanvasLines(ctx, 'প্রশ্ন: ' + activeQuoteMeta.title, 880).slice(0, 2);
+      let ty = 200;
+      for (const tl of tLines) {
+        ctx.fillText(tl, 100, ty);
+        ty += 42;
+      }
+    }
+
+    // Main Answer Quote
+    const val = quoteTextEl.value.trim() || 'উদ্ধৃতি লিখুন...';
+    let fontSize = 48;
+    let lines = [];
+    while (fontSize >= 28) {
+      ctx.font = `600 ${fontSize}px "Hind Siliguri", sans-serif`;
+      lines = wrapCanvasLines(ctx, val, 880);
+      if (lines.length * fontSize * 1.46 <= 520) break;
+      fontSize -= 2;
+    }
+    ctx.fillStyle = isLight ? '#102420' : '#f4f7f6';
+    ctx.font = `600 ${fontSize}px "Hind Siliguri", sans-serif`;
+    let y = activeQuoteMeta.title ? 320 : 260;
+    for (const ln of lines.slice(0, 11)) {
+      ctx.fillText(ln, 100, y);
+      y += fontSize * 1.46;
+    }
+
+    // Footer divider & verified source citation
+    ctx.strokeStyle = isLight ? 'rgba(154,109,11,0.4)' : 'rgba(216,170,62,0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(100, 880);
+    ctx.lineTo(980, 880);
+    ctx.stroke();
+
+    ctx.fillStyle = isLight ? '#7d5604' : '#ffd56a';
+    ctx.font = '700 29px "Hind Siliguri", sans-serif';
+    ctx.fillText(`সূত্র: ${activeQuoteMeta.source || 'DAWAH X'}`, 100, 932);
+
+    ctx.fillStyle = isLight ? '#4f6963' : '#9ab4bc';
+    ctx.font = '400 25px "Hind Siliguri", sans-serif';
+    const refUrl = activeQuoteMeta.key
+      ? `ebrahim-ead.github.io/DAWAH-X/s/${activeQuoteMeta.key}.html`
+      : 'dawah-x.github.io/card';
+    ctx.fillText(refUrl, 100, 978);
+
+    quoteCanvas.toBlob((b) => {
+      activeQuoteMeta.blob = b;
+    }, 'image/png');
+  }
+
+  function openQuoteCardModal({ text, title, source, key }) {
+    closeOverlays();
+    activeQuoteMeta = { title: title.slice(0, 125), source, key, theme: activeQuoteMeta.theme || 'dark', blob: null };
+    if (quoteTextEl) quoteTextEl.value = text.slice(0, 320);
+    if (quoteCardModal) {
+      quoteCardModal.classList.add('open');
+      backdrop.classList.add('open');
+      drawQuoteCardCanvas();
+    }
+  }
+
+  quoteTextEl?.addEventListener('input', drawQuoteCardCanvas);
+  document.getElementById('quoteThemeDarkBtn')?.addEventListener('click', () => {
+    activeQuoteMeta.theme = 'dark';
+    drawQuoteCardCanvas();
+  });
+  document.getElementById('quoteThemeLightBtn')?.addEventListener('click', () => {
+    activeQuoteMeta.theme = 'light';
+    drawQuoteCardCanvas();
+  });
+  document.getElementById('downloadQuotePngBtn')?.addEventListener('click', () => {
+    if (!activeQuoteMeta.blob) return;
+    const url = URL.createObjectURL(activeQuoteMeta.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dawahx-fatwa-${activeQuoteMeta.key || 'card'}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+  });
+  document.getElementById('shareQuotePngBtn')?.addEventListener('click', async () => {
+    if (!activeQuoteMeta.blob) return;
+    const file = new File([activeQuoteMeta.blob], 'dawahx-card.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: 'DAWAH X — দলিলভিত্তিক উত্তর' });
+        return;
+      } catch (_) {}
+    }
+    document.getElementById('downloadQuotePngBtn')?.click();
+  });
+
+  // ===== v4.0 In-App YouTube Cinema Lightbox & Live Broadcast Poller =====
+  function openVideoModal(videoId, title) {
+    if (!videoId || !videoModal || !videoModalIframe) return;
+    closeOverlays();
+    document.getElementById('videoModalTitle').textContent = title || 'DAWAH X Video';
+    document.getElementById('videoExternalLink').href = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
+    videoModalIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0`;
+    videoModal.classList.add('open');
+    backdrop.classList.add('open');
+  }
+
+  async function checkLiveBroadcast() {
+    const liveBtn = document.getElementById('liveStreamBtn');
+    if (!liveBtn || !window.DawahXBrowserAI || !window.DawahXBrowserAI.getLiveStreams) return;
+    const streams = await window.DawahXBrowserAI.getLiveStreams();
+    if (streams && streams.length > 0) {
+      const s = streams[0];
+      liveBtn.style.display = 'inline-flex';
+      liveBtn.dataset.playVideo = s.id;
+      liveBtn.dataset.videoTitle = `${s.channel || 'DAWAH X'} — ${s.title || 'লাইভ সম্প্রচার'}`;
+      liveBtn.title = liveBtn.dataset.videoTitle;
+    } else {
+      liveBtn.style.display = 'none';
+    }
+  }
+
+  // ===== v4.0 Theme Toggle, Font Size Cycler, Chat Export, Shortcuts & PWA =====
+  const themeToggleBtn = document.getElementById('themeToggleBtn');
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    if (themeToggleBtn) themeToggleBtn.textContent = theme === 'light' ? '🌙' : '☀️';
+    const metaTheme = document.getElementById('metaThemeColor');
+    if (metaTheme) metaTheme.setAttribute('content', theme === 'light' ? '#f6f4ee' : '#071419');
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  themeToggleBtn?.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    localStorage.setItem(THEME_KEY, cur);
+    applyTheme(cur);
+  });
+
+  const fontSizeBtn = document.getElementById('fontSizeBtn');
+  const FONT_MODES = ['normal', 'font-lg', 'font-xl'];
+  function applyFontMode(mode) {
+    document.body.classList.remove('font-lg', 'font-xl');
+    if (mode === 'font-lg' || mode === 'font-xl') document.body.classList.add(mode);
+    if (fontSizeBtn) fontSizeBtn.textContent = mode === 'font-xl' ? 'অ-' : mode === 'font-lg' ? 'অ++' : 'অ+';
+  }
+  applyFontMode(localStorage.getItem(FONTSIZE_KEY) || 'normal');
+  fontSizeBtn?.addEventListener('click', () => {
+    const cur = localStorage.getItem(FONTSIZE_KEY) || 'normal';
+    const next = FONT_MODES[(FONT_MODES.indexOf(cur) + 1) % FONT_MODES.length];
+    localStorage.setItem(FONTSIZE_KEY, next);
+    applyFontMode(next);
+  });
+
+  document.getElementById('exportChatBtn')?.addEventListener('click', () => {
+    if (!currentSessionTurns.length) return;
+    const lines = ['=== DAWAH X AI — কথোপকথন ও দলিলসমূহ ===\n'];
+    for (const t of currentSessionTurns) {
+      lines.push(`প্রশ্ন: ${t.question}`);
+      if (t.data.headline) lines.push(`শিরোনাম: ${t.data.headline}`);
+      lines.push(`উত্তর: ${t.data.direct_answer}`);
+      if (t.data.explanation_paragraphs?.length) lines.push(t.data.explanation_paragraphs.join('\n'));
+      if (t.data.primary_url) lines.push(`সূত্র: ${t.data.primary_url}`);
+      lines.push('\n----------------------------------------\n');
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `dawahx-ai-chat-${new Date().toISOString().slice(0, 10)}.txt`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      stopSpeech();
+      closeOverlays();
+    } else if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
+      e.preventDefault();
+      questionInput.focus();
+    }
+  });
+
+  // PWA Service Worker & Install Prompt
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  const installPwaBtn = document.getElementById('installPwaBtn');
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    if (installPwaBtn) installPwaBtn.style.display = 'flex';
+  });
+  installPwaBtn?.addEventListener('click', async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => {});
+    deferredInstallPrompt = null;
+    installPwaBtn.style.display = 'none';
+  });
+
   renderSidebarLists();
   updateLivePrayerBadge();
   setInterval(updateLivePrayerBadge, 45000);
-  loadStats();
+  checkLiveBroadcast();
+  setInterval(checkLiveBroadcast, 120000);
+  loadStats().then(() => {
+    // Support shareable ?q=... deep query links!
+    const urlQ = new URLSearchParams(location.search).get('q');
+    if (urlQ && urlQ.trim()) {
+      submitQuestion(urlQ.trim());
+    }
+  });
 })();
