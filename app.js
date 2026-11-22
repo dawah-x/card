@@ -70,6 +70,82 @@
     return /[।?!.)”'"\]*»﴾]\s*$/u.test(trimmed);
   }
 
+  function normalizeBnSentForDedup(s) {
+    return String(s || '')
+      .normalize('NFC')
+      .toLowerCase()
+      .replace(/[‘’'ʼ`ʻ"“”]/g, '')
+      .replace(/ী/g, 'ি')
+      .replace(/ূ/g, 'ু')
+      .replace(/[ছশষ]/g, 'স')
+      .replace(/ণ/g, 'ন')
+      .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
+      .trim();
+  }
+
+  // Repairs spaced vowel marks, strips leaked continuation preambles & removes sentence-level repetition loops
+  function cleanAndDeduplicateAnswer(rawText) {
+    let text = String(rawText || '');
+    if (!text) return { text: '', hadLoop: false };
+
+    // 1. Repair any spaced Bengali combining vowel/virama/nukta marks (e.g., "ঠ ি ক" -> "ঠিক")
+    let prev = '';
+    while (text !== prev) {
+      prev = text;
+      text = text.replace(
+        /([\u0985-\u09B9\u09CE\u09DC-\u09DF\u09BE-\u09CD])\s+([\u0981-\u0983\u09BC\u09BE-\u09CD\u09D7])/gu,
+        '$1$2'
+      );
+    }
+
+    // 2. Strip any echoed continuation meta-instruction
+    text = text
+      .replace(/ঠিক\s*যেখান\s*থেকে\s*থেমেছে[^।\n:]*[:।]?\s*/gu, '')
+      .trim();
+
+    // 3. Sentence-level loop deduplication
+    const segments = text.match(/[^।?!\n]+[।?!]*|\n+/gu) || [text];
+    const seen = [];
+    const kept = [];
+    let hadLoop = false;
+
+    for (const seg of segments) {
+      if (/^\n+$/.test(seg)) {
+        kept.push(seg);
+        continue;
+      }
+      const norm = normalizeBnSentForDedup(seg);
+      if (norm.length >= 22) {
+        const isDup = seen.some(
+          (p) => p === norm || (Math.min(p.length, norm.length) >= 30 && (p.includes(norm) || norm.includes(p)))
+        );
+        if (isDup) {
+          hadLoop = true;
+          break;
+        }
+        seen.push(norm);
+      }
+      kept.push(seg);
+    }
+
+    let out = kept.join('').trim();
+    if (hadLoop) {
+      const lastTerm = Math.max(out.lastIndexOf('।'), out.lastIndexOf('?'), out.lastIndexOf('!'));
+      if (lastTerm >= 40) out = out.slice(0, lastTerm + 1).trim();
+    }
+    return { text: out, hadLoop };
+  }
+
+  function trimToLastCompleteSentence(txt) {
+    const t = String(txt || '').trim();
+    if (isCompleteSentence(t)) return t;
+    const lastTerm = Math.max(t.lastIndexOf('।'), t.lastIndexOf('?'), t.lastIndexOf('!'));
+    if (lastTerm >= 120) {
+      return t.slice(0, lastTerm + 1).trim();
+    }
+    return t;
+  }
+
   let activeFilter = 'all';
   let isAsking = false;
   let activeStreamAbort = null;
@@ -81,7 +157,7 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v16_only';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v17_only';
   const CITY_KEY = 'dawahx_user_city_v4';
   const ASR_METHOD_KEY = 'dawahx_asr_method';
   const THEME_KEY = 'dawahx_theme_v4';
@@ -743,8 +819,8 @@
     }
   }
 
-  // Stream a single SSE pass with AbortController & UTF-8 tail flush
-  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken) {
+  // Stream a single SSE pass with AbortController, replace_text loop-guard & UTF-8 tail flush
+  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken, onReplace) {
     const res = await fetch(aiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -758,6 +834,7 @@
     let sseBuf = '';
     let passText = '';
     let hadStreamError = false;
+    let replacedByLoopGuard = false;
 
     const processLine = (rawLine) => {
       const line = rawLine.trim();
@@ -768,6 +845,12 @@
         const evt = JSON.parse(payload);
         if (evt.error) {
           hadStreamError = true;
+          return;
+        }
+        if (typeof evt.replace_text === 'string') {
+          passText = evt.replace_text;
+          replacedByLoopGuard = true;
+          if (typeof onReplace === 'function') onReplace(evt.replace_text);
           return;
         }
         if (typeof evt.token === 'string' && evt.token) {
@@ -791,7 +874,7 @@
       if (ln.trim()) processLine(ln);
     }
 
-    return { passText, hadStreamError };
+    return { passText, hadStreamError, replacedByLoopGuard };
   }
 
   async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
@@ -861,6 +944,7 @@
     }
 
     let fullText = '';
+    let loopStoppedClientSide = false;
     try {
       let rafScheduled = false;
 
@@ -872,11 +956,27 @@
           formatRichText(fullText.trim()) + (doneNow ? '' : '<span class="stream-cursor"></span>');
       };
 
-      const onChunk = () => {
+      const onChunk = (incomingTok) => {
+        if (incomingTok && /[।?!\n]/.test(incomingTok) && fullText.length >= 140) {
+          const check = cleanAndDeduplicateAnswer(fullText);
+          if (check.hadLoop) {
+            fullText = check.text;
+            loopStoppedClientSide = true;
+            if (abortCtrl && !abortCtrl.signal.aborted) {
+              abortCtrl.abort('deduped_complete');
+            }
+          }
+        }
         if (!rafScheduled) {
           rafScheduled = true;
           requestAnimationFrame(() => flushRender(false));
         }
+      };
+
+      const onReplaceText = (cleanTxt) => {
+        fullText = cleanTxt;
+        loopStoppedClientSide = true;
+        onChunk('');
       };
 
       const basePayload = {
@@ -901,17 +1001,31 @@
 
       let firstPass;
       try {
-        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
-          fullText += tok;
-          onChunk();
-        });
-      } catch (primaryErr) {
-        if (backupAiUrl && !fullText && !(signal && signal.aborted)) {
-          activeAiUrl = backupAiUrl;
-          firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
+        firstPass = await streamCloudflarePass(
+          activeAiUrl,
+          basePayload,
+          signal,
+          (tok) => {
             fullText += tok;
-            onChunk();
-          });
+            onChunk(tok);
+          },
+          onReplaceText
+        );
+      } catch (primaryErr) {
+        if (loopStoppedClientSide) {
+          firstPass = { passText: fullText, hadStreamError: false, replacedByLoopGuard: true };
+        } else if (backupAiUrl && !fullText && !(signal && signal.aborted)) {
+          activeAiUrl = backupAiUrl;
+          firstPass = await streamCloudflarePass(
+            activeAiUrl,
+            basePayload,
+            signal,
+            (tok) => {
+              fullText += tok;
+              onChunk(tok);
+            },
+            onReplaceText
+          );
         } else {
           throw primaryErr;
         }
@@ -919,10 +1033,16 @@
 
       if (firstPass.hadStreamError && !fullText && backupAiUrl && activeAiUrl !== backupAiUrl && !(signal && signal.aborted)) {
         activeAiUrl = backupAiUrl;
-        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
-          fullText += tok;
-          onChunk();
-        });
+        firstPass = await streamCloudflarePass(
+          activeAiUrl,
+          basePayload,
+          signal,
+          (tok) => {
+            fullText += tok;
+            onChunk(tok);
+          },
+          onReplaceText
+        );
       }
 
       if (firstPass.hadStreamError && fullText.trim().length < 140) {
@@ -930,9 +1050,33 @@
         return;
       }
 
-      // Seamless Auto-Continuation when an answer reaches token boundary mid-sentence
-      if (fullText.trim().length >= 90 && !isCompleteSentence(fullText) && !(signal && signal.aborted)) {
+      // Deduplicate Pass 1 before deciding whether continuation is genuinely needed
+      const pass1Dedup = cleanAndDeduplicateAnswer(fullText);
+      fullText = pass1Dedup.text;
+      const stoppedForRepetition = Boolean(
+        pass1Dedup.hadLoop || loopStoppedClientSide || firstPass.replacedByLoopGuard
+      );
+
+      // Seamless Auto-Continuation ONLY when genuinely cut off mid-sentence (never after a repetition loop!)
+      if (
+        !stoppedForRepetition &&
+        fullText.length >= 90 &&
+        !isCompleteSentence(fullText) &&
+        !(signal && signal.aborted)
+      ) {
         try {
+          // Trim any dangling broken half-word back to the last space before continuing
+          const lastCompleteEnd = Math.max(
+            fullText.lastIndexOf('।'),
+            fullText.lastIndexOf('?'),
+            fullText.lastIndexOf('!')
+          );
+          const lastSpace = fullText.lastIndexOf(' ');
+          if (lastSpace > lastCompleteEnd && fullText.length - lastSpace <= 18) {
+            fullText = fullText.slice(0, lastSpace).trimEnd();
+          }
+
+          let isFirstContToken = true;
           await streamCloudflarePass(
             activeAiUrl,
             {
@@ -942,20 +1086,29 @@
             },
             signal,
             (tok) => {
-              const needsSpace =
-                fullText &&
-                !/\s$/.test(fullText) &&
-                !/^[\s।?!.,:;)\]”'"]/u.test(tok);
-              fullText += (needsSpace ? ' ' : '') + tok;
-              onChunk();
-            }
+              if (isFirstContToken) {
+                isFirstContToken = false;
+                // ONLY check space on the very first token, and NEVER before combining marks (\p{M}) or punctuation!
+                const needsSpace =
+                  fullText &&
+                  !/\s$/.test(fullText) &&
+                  !/^[\s\p{M}।?!.,:;)\]”'"—–-]/u.test(tok);
+                fullText += (needsSpace ? ' ' : '') + tok;
+              } else {
+                fullText += tok;
+              }
+              onChunk(tok);
+            },
+            onReplaceText
           );
         } catch (_) {}
       }
 
       if (stopBtn) stopBtn.remove();
-      const cleaned = fullText.trim();
+      const finalCheck = cleanAndDeduplicateAnswer(fullText);
+      const cleaned = trimToLastCompleteSentence(finalCheck.text);
       if (cleaned && isCompleteSentence(cleaned)) {
+        fullText = cleaned;
         flushRender(true);
         if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
         applyGeneratedAnswerToCard(answerCard, data, cleaned);
@@ -964,23 +1117,23 @@
         }
         return;
       }
-      if (cleaned.length >= 160) {
-        fullText = cleaned + '।';
-        flushRender(true);
-        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
-        applyGeneratedAnswerToCard(answerCard, data, fullText);
-        return;
-      }
 
       targetEl.innerHTML = fallbackHtml;
     } catch (err) {
       if (stopBtn) stopBtn.remove();
-      if (err && err.name === 'AbortError' && fullText.trim().length >= 100) {
-        const partialDone = isCompleteSentence(fullText) ? fullText.trim() : fullText.trim() + '।';
-        if (streamBody) streamBody.innerHTML = formatRichText(partialDone);
-        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিশ্লেষণ';
-        applyGeneratedAnswerToCard(answerCard, data, partialDone);
-        return;
+      if (loopStoppedClientSide || (err && err.name === 'AbortError' && fullText.trim().length >= 100)) {
+        const cleanPartial = cleanAndDeduplicateAnswer(fullText).text;
+        const partialDone = trimToLastCompleteSentence(cleanPartial);
+        if (partialDone.length >= 80) {
+          const finalTxt = isCompleteSentence(partialDone) ? partialDone : partialDone + '।';
+          if (streamBody) streamBody.innerHTML = formatRichText(finalTxt);
+          if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+          applyGeneratedAnswerToCard(answerCard, data, finalTxt);
+          if (loopStoppedClientSide && mode === 'grounded' && data.primary_key && isCompleteSentence(finalTxt)) {
+            putCachedGroundedAnswer(question, data.primary_key, finalTxt);
+          }
+          return;
+        }
       }
       targetEl.innerHTML = fallbackHtml;
     } finally {
@@ -1006,6 +1159,10 @@
     const srcBadgeHtml = data.primary_source_name
       ? `<span class="badge-source">${escHtml(data.primary_source_name)}</span>`
       : '';
+
+    if (data.ai_generated) {
+      data.ai_generated = trimToLastCompleteSentence(cleanAndDeduplicateAnswer(data.ai_generated).text);
+    }
 
     const rawExplanationHtml = (data.explanation_paragraphs || [])
       .map((p) => `<p>${formatRichText(p)}</p>`)
