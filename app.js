@@ -43,7 +43,11 @@
   const THEME_KEY = 'dawahx_theme_v4';
   const FONTSIZE_KEY = 'dawahx_fontsize_v4';
   const CF_WORKER_KEY = 'dawahx_cf_worker_url_v1';
-  const DEFAULT_CF_WORKER_URL = String(window.DAWAHX_WORKER_URL || '').trim().replace(/\/+$/, '');
+  const DEFAULT_CF_WORKER_URL = String(
+    window.DAWAHX_WORKER_URL || 'https://ead.ead123628.workers.dev'
+  )
+    .trim()
+    .replace(/\/+$/, '');
 
   // Support 1-click `?worker=https://...` auto-linking
   try {
@@ -643,34 +647,47 @@
   }
 
   async function detectCloudflareAI(explicitUrl) {
-    const storedUrl =
+    let candidateBase =
       explicitUrl !== undefined
         ? String(explicitUrl || '').trim().replace(/\/+$/, '')
         : (localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL).trim().replace(/\/+$/, '');
 
-    // Avoid 404 console noise when hosted on static github.io without a configured Worker URL
-    if (!storedUrl && location.hostname.endsWith('.github.io')) {
+    // Use fast same-origin relative path when already hosted on the Worker origin (skips CORS preflight!)
+    if (candidateBase && location.origin === candidateBase) {
+      candidateBase = '';
+    }
+
+    if (!candidateBase && location.hostname.endsWith('.github.io')) {
       cfAiAvailable = false;
       cfAiEndpointBase = '';
       updateCfStatusUI();
       return false;
     }
 
-    const healthUrl = storedUrl ? `${storedUrl}/api/health` : 'api/health';
+    const healthUrl = candidateBase ? `${candidateBase}/api/health` : 'api/health';
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), 4500) : null;
     try {
-      const res = await fetch(healthUrl, { method: 'GET', cache: 'no-store' });
+      const res = await fetch(healthUrl, {
+        method: 'GET',
+        cache: 'no-store',
+        signal: ctrl ? ctrl.signal : undefined,
+      });
       const ctype = res.headers.get('content-type') || '';
       if (res.ok && ctype.includes('application/json')) {
         const info = await res.json();
         if (info && info.ok && info.engine === 'cloudflare-workers-ai') {
           cfAiAvailable = true;
-          cfAiEndpointBase = storedUrl;
+          cfAiEndpointBase = candidateBase;
           cfAiModelName = String(info.primary_model || '').includes('70b') ? 'Llama 3.3 70B' : 'Cloudflare AI';
           updateCfStatusUI();
           return true;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
 
     cfAiAvailable = false;
     cfAiEndpointBase = '';

@@ -30,7 +30,7 @@
 **পদ্ধতি ক — Cloudflare Dashboard থেকে ১ ক্লিকে (সবচেয়ে সহজ, কোনো টোকেন লাগবে না):**
 1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create**-এ যান।
 2. **Import a repository** নির্বাচন করে আপনার GitHub রিপোজিটরি `dawah-x/card` যুক্ত করুন এবং **Deploy** চাপুন।
-3. ডিপ্লয় শেষ হলে `https://ead.<subdomain>.workers.dev` লিংকে পূর্ণ সাইট + লাইভ এআই একসাথে চালু হয়ে যাবে! চাইলে এই URL-টি `https://dawah-x.github.io/card/`-এর **মডেল ও সেটিংস** বক্সেও সেভ করতে পারেন।
+3. ডিপ্লয় শেষ হলে [`https://ead.ead123628.workers.dev/`](https://ead.ead123628.workers.dev/) এবং [`https://dawah-x.github.io/card/`](https://dawah-x.github.io/card/)—উভয় লিংকেই স্বয়ংক্রিয়ভাবে পূর্ণ সাইট ও লাইভ জেনারেটিভ এআই একসাথে কাজ করবে!
 
 **পদ্ধতি খ — GitHub Actions অটো-ডিপ্লয় (ঐচ্ছিক):**
 - আপনার GitHub রিপোজিটরির **Settings → Secrets and variables → Actions**-এ গিয়ে দুটি Secret যুক্ত করুন:

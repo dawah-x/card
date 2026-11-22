@@ -33,6 +33,9 @@
       }
     } catch (_) {}
   }
+  if (!detectedWorkerBase) {
+    detectedWorkerBase = 'https://ead.ead123628.workers.dev';
+  }
 
   const BN_DIGITS = '০১২৩৪৫৬৭৮৯';
   const FOLD_MAP = { 'ী': 'ি', 'ূ': 'ু', 'ঈ': 'ই', 'ঊ': 'উ', 'ছ': 'স', 'শ': 'স', 'ষ': 'স', 'য': 'জ', 'ণ': 'ন', 'ৎ': 'ত' };
