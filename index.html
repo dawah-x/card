@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DAWAH X AI — ইসলামিক প্রশ্নোত্তর এআই মডেল</title>
   <meta name="description" content="DAWAH X ওয়েবসাইটের ২৪,২০৭+ ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধ এবং ৯,৩১০+ ভিডিও থেকে দলিলভিত্তিক ইসলামিক উত্তর প্রদানকারী এআই মডেল।" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
+  <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <div class="app-shell">
@@ -14,7 +14,7 @@
     <aside class="sidebar" id="sidebar">
       <div class="brand-box">
         <a href="https://ebrahim-ead.github.io/DAWAH-X/" target="_blank" rel="noopener noreferrer" class="brand-link">
-          <img src="/logo-icon.webp" alt="DAWAH X" class="brand-logo" />
+          <img src="logo-icon.webp" alt="DAWAH X" class="brand-logo" />
           <div class="brand-meta">
             <h1>DAWAH X <span class="ai-pill">AI</span></h1>
             <small>কুরআন ও সুন্নাহভিত্তিক এআই</small>
@@ -220,12 +220,12 @@
       <div>
         <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">২. আপনার DAWAH-X (GitHub Pages) সাইটে সরাসরি যুক্ত করার কোড</h3>
         <p style="font-size: 13.5px; color: var(--muted); margin-bottom: 8px;">
-          <code>static/dawahx-ai-widget.js</code> ফাইলটি আপনার <code>Ebrahim-ead/DAWAH-X</code> রিপোজিটরির রুটে কপি করে যেকোনো HTML পাতার <code>&lt;/body&gt;</code>-এর আগে নিচের ১ লাইন কোড বসালেই ভাসমান এআই চ্যাটবট চালু হয়ে যাবে (কোনো পেইড সার্ভার ছাড়াই সরাসরি GitHub Pages-এর <code>search/</code> ও <code>texts/</code> থেকে কাজ করে, আবার চাইলে Python API-এর সাথেও যুক্ত করা যায়!):
+          <code>dawahx-ai-widget.js</code> ফাইলটি আপনার <code>Ebrahim-ead/DAWAH-X</code> রিপোজিটরির রুটে কপি করে যেকোনো HTML পাতার <code>&lt;/body&gt;</code>-এর আগে নিচের ১ লাইন কোড বসালেই ভাসমান এআই চ্যাটবট চালু হয়ে যাবে (কোনো পেইড সার্ভার ছাড়াই সরাসরি GitHub Pages-এর <code>search/</code> ও <code>texts/</code> থেকে কাজ করে, আবার চাইলে Python API-এর সাথেও যুক্ত করা যায়!):
         </p>
         <pre class="code-snippet" id="embedSnippet">&lt;script src="dawahx-ai-widget.js" defer&gt;&lt;/script&gt;</pre>
         <div style="margin-top: 8px; display: flex; gap: 8px;">
           <button class="src-action-btn gold-link" id="copyEmbedBtn">কোড কপি করুন</button>
-          <a href="/dawahx-ai-widget.js" download="dawahx-ai-widget.js" class="src-action-btn">⬇ dawahx-ai-widget.js ডাউনলোড করুন</a>
+          <a href="dawahx-ai-widget.js" download="dawahx-ai-widget.js" class="src-action-btn">⬇ dawahx-ai-widget.js ডাউনলোড করুন</a>
         </div>
       </div>
 
@@ -263,6 +263,7 @@ Content-Type: application/json
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="browser-ai.js"></script>
+  <script src="app.js"></script>
 </body>
 </html>

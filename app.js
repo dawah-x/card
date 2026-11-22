@@ -29,6 +29,7 @@
 
   let activeFilter = 'all';
   let isAsking = false;
+  let backendAvailable = null; // true = Python FastAPI, false = GitHub Pages Browser AI Engine
 
   // DOM References
   const sidebar = document.getElementById('sidebar');
@@ -140,12 +141,32 @@
     submitQuestion(q);
   });
 
-  // Load initial stats & metrics
+  // Load initial stats & metrics (works on BOTH Python FastAPI AND static GitHub Pages!)
   async function loadStats() {
     try {
-      const res = await fetch('/api/stats');
-      if (!res.ok) return;
-      const data = await res.json();
+      let data = null;
+      if (backendAvailable !== false && !location.hostname.endsWith('.github.io')) {
+        try {
+          const res = await fetch('api/stats');
+          const ctype = res.headers.get('content-type') || '';
+          if (res.ok && ctype.includes('application/json')) {
+            data = await res.json();
+            backendAvailable = true;
+          } else {
+            backendAvailable = false;
+          }
+        } catch (_) {
+          backendAvailable = false;
+        }
+      } else {
+        backendAvailable = false;
+      }
+
+      if (!data && window.DawahXBrowserAI) {
+        data = await window.DawahXBrowserAI.getStats();
+      }
+      if (!data) return;
+
       const s = data.summary || {};
       const st = s.site_stats || {};
       document.getElementById('statDocs').textContent = formatBnInt(s.total_documents || st.texts || 24207);
@@ -425,16 +446,26 @@
     chatScroll.scrollTop = chatScroll.scrollHeight;
 
     try {
-      const res = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          question,
-          source_filter: activeFilter,
-          top_k: 5,
-        }),
-      });
-      const data = await res.json();
+      let data = null;
+      if (backendAvailable === true) {
+        try {
+          const res = await fetch('api/ask', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              question,
+              source_filter: activeFilter,
+              top_k: 5,
+            }),
+          });
+          if (res.ok) data = await res.json();
+        } catch (_) {}
+      }
+      if (!data && window.DawahXBrowserAI) {
+        data = await window.DawahXBrowserAI.ask(question, activeFilter, 5);
+      }
+      if (!data) throw new Error('No AI response');
+
       loader.remove();
       const answerCard = renderAnswerCard(data);
       chatContainer.appendChild(answerCard);
@@ -449,7 +480,7 @@
       loader.remove();
       const errCard = document.createElement('div');
       errCard.className = 'msg-ai-card';
-      errCard.innerHTML = `<p style="color:#f87171;">দুঃখিত, সার্ভারের সাথে সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।</p>`;
+      errCard.innerHTML = `<p style="color:#f87171;">দুঃখিত, তথ্যভাণ্ডারের সাথে সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে ইন্টারনেট সংযোগ পরীক্ষা করে আবার চেষ্টা করুন।</p>`;
       chatContainer.appendChild(errCard);
     } finally {
       isAsking = false;
@@ -457,7 +488,7 @@
     }
   }
 
-  // Inline Full-Article Reader Drawer
+  // Inline Full-Article Reader Drawer (works on BOTH Python Backend AND GitHub Pages!)
   async function openInlineReader(key) {
     if (!key) return;
     readerDrawer.classList.add('open');
@@ -473,9 +504,18 @@
     extUrlEl.href = `https://ebrahim-ead.github.io/DAWAH-X/read.html?k=${encodeURIComponent(key)}`;
 
     try {
-      const res = await fetch(`/api/document/${encodeURIComponent(key)}`);
-      if (!res.ok) throw new Error('Not found');
-      const doc = await res.json();
+      let doc = null;
+      if (backendAvailable === true) {
+        try {
+          const res = await fetch(`api/document/${encodeURIComponent(key)}`);
+          if (res.ok) doc = await res.json();
+        } catch (_) {}
+      }
+      if (!doc && window.DawahXBrowserAI) {
+        doc = await window.DawahXBrowserAI.getDocument(key);
+      }
+      if (!doc) throw new Error('Not found');
+
       titleEl.textContent = doc.title;
       const parts = [doc.source_name];
       if (doc.category && doc.category !== doc.source_name) parts.push(doc.category);
@@ -525,14 +565,19 @@
     syncCorpusBtn.textContent = '↻ সিঙ্ক হচ্ছে...';
     syncCorpusBtn.disabled = true;
     try {
-      const res = await fetch('/api/sync', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force_retrain: false }),
-      });
-      const data = await res.json();
+      let data = { updated: true };
+      if (backendAvailable === true) {
+        const res = await fetch('api/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ force_retrain: false }),
+        });
+        data = await res.json();
+      } else if (window.DawahXBrowserAI) {
+        data = await window.DawahXBrowserAI.sync();
+      }
       await loadStats();
-      syncCorpusBtn.textContent = data.updated ? '✓ নতুন তথ্য যুক্ত হয়েছে!' : '✓ সর্বশেষ আপডেটই আছে';
+      syncCorpusBtn.textContent = data.updated ? '✓ সর্বশেষ তথ্য লোড হয়েছে!' : '✓ সর্বশেষ আপডেটই আছে';
     } catch (_) {
       syncCorpusBtn.textContent = '⚠ সংযোগ ত্রুটি';
     } finally {
