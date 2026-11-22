@@ -665,45 +665,52 @@
   }
 
   async function detectCloudflareAI(explicitUrl) {
-    let candidateBase =
-      explicitUrl !== undefined
-        ? String(explicitUrl || '').trim().replace(/\/+$/, '')
-        : (localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL).trim().replace(/\/+$/, '');
+    const storedWorker = (localStorage.getItem(CF_WORKER_KEY) || '').trim().replace(/\/+$/, '');
+    const isHostedOnCf =
+      location.hostname.endsWith('.workers.dev') || location.hostname.endsWith('.pages.dev');
 
-    if (candidateBase && location.origin === candidateBase) {
-      candidateBase = '';
+    // When opened on any Cloudflare Worker/Pages URL (e.g. dawahx-assistant.*.workers.dev or ead.*.workers.dev),
+    // always prefer same-origin /api/ai first so that Worker uses its own 10,000 daily Neurons!
+    const candidates = [];
+    if (explicitUrl !== undefined) {
+      const cleanExp = String(explicitUrl || '').trim().replace(/\/+$/, '');
+      candidates.push(location.origin === cleanExp ? '' : cleanExp);
+    } else if (storedWorker) {
+      candidates.push(location.origin === storedWorker ? '' : storedWorker);
+      if (isHostedOnCf) candidates.push('');
+    } else if (isHostedOnCf) {
+      candidates.push('');
+      if (location.origin !== DEFAULT_CF_WORKER_URL) candidates.push(DEFAULT_CF_WORKER_URL);
+    } else {
+      if (!location.hostname.endsWith('.github.io')) candidates.push('');
+      if (DEFAULT_CF_WORKER_URL) candidates.push(DEFAULT_CF_WORKER_URL);
     }
 
-    if (!candidateBase && location.hostname.endsWith('.github.io')) {
-      cfAiAvailable = false;
-      cfAiEndpointBase = '';
-      updateCfStatusUI();
-      return false;
-    }
-
-    const healthUrl = candidateBase ? `${candidateBase}/api/health` : 'api/health';
-    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = ctrl ? setTimeout(() => ctrl.abort(), 4500) : null;
-    try {
-      const res = await fetch(healthUrl, {
-        method: 'GET',
-        cache: 'no-store',
-        signal: ctrl ? ctrl.signal : undefined,
-      });
-      const ctype = res.headers.get('content-type') || '';
-      if (res.ok && ctype.includes('application/json')) {
-        const info = await res.json();
-        if (info && info.ok) {
-          cfAiAvailable = true;
-          cfAiEndpointBase = candidateBase;
-          cfAiModelName = String(info.primary_model || '').includes('70b') ? 'Llama 3.3 70B' : 'Cloudflare AI';
-          updateCfStatusUI();
-          return true;
+    for (const base of [...new Set(candidates)]) {
+      const healthUrl = base ? `${base}/api/health` : 'api/health';
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 4500) : null;
+      try {
+        const res = await fetch(healthUrl, {
+          method: 'GET',
+          cache: 'no-store',
+          signal: ctrl ? ctrl.signal : undefined,
+        });
+        const ctype = res.headers.get('content-type') || '';
+        if (res.ok && ctype.includes('application/json')) {
+          const info = await res.json();
+          if (info && info.ok) {
+            cfAiAvailable = true;
+            cfAiEndpointBase = base;
+            cfAiModelName = String(info.primary_model || '').includes('70b') ? 'Llama 3.3 70B' : 'Cloudflare AI';
+            updateCfStatusUI();
+            return true;
+          }
         }
+      } catch (_) {
+      } finally {
+        if (timer) clearTimeout(timer);
       }
-    } catch (_) {
-    } finally {
-      if (timer) clearTimeout(timer);
     }
 
     cfAiAvailable = false;
@@ -883,10 +890,40 @@
         evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 3) : [],
       };
 
-      const firstPass = await streamCloudflarePass(aiUrl, basePayload, signal, (tok) => {
-        fullText += tok;
-        onChunk();
-      });
+      let activeAiUrl = aiUrl;
+      const backupBase = String(window.DAWAHX_BACKUP_WORKER_URL || DEFAULT_CF_WORKER_URL || '')
+        .trim()
+        .replace(/\/+$/, '');
+      const backupAiUrl =
+        backupBase && location.origin !== backupBase && activeAiUrl !== `${backupBase}/api/ai`
+          ? `${backupBase}/api/ai`
+          : '';
+
+      let firstPass;
+      try {
+        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
+          fullText += tok;
+          onChunk();
+        });
+      } catch (primaryErr) {
+        if (backupAiUrl && !fullText && !(signal && signal.aborted)) {
+          activeAiUrl = backupAiUrl;
+          firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
+            fullText += tok;
+            onChunk();
+          });
+        } else {
+          throw primaryErr;
+        }
+      }
+
+      if (firstPass.hadStreamError && !fullText && backupAiUrl && activeAiUrl !== backupAiUrl && !(signal && signal.aborted)) {
+        activeAiUrl = backupAiUrl;
+        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
+          fullText += tok;
+          onChunk();
+        });
+      }
 
       if (firstPass.hadStreamError && fullText.trim().length < 140) {
         targetEl.innerHTML = fallbackHtml;
@@ -897,7 +934,7 @@
       if (fullText.trim().length >= 90 && !isCompleteSentence(fullText) && !(signal && signal.aborted)) {
         try {
           await streamCloudflarePass(
-            aiUrl,
+            activeAiUrl,
             {
               ...basePayload,
               mode: 'continue',
