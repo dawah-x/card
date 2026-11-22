@@ -1,0 +1,16 @@
+# Virtual environments & Python caches
+.venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Cloned DAWAH-X corpus & trained binary model cache (auto-generated on startup / train)
+.cache/
+
+# OS / Editor
+.DS_Store
+*.log

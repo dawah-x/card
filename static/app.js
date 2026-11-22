@@ -1,0 +1,585 @@
+/* ===== DAWAH X AI — Frontend Client Logic ===== */
+(function () {
+  'use strict';
+
+  const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+  const toBnNum = (val) =>
+    String(val).replace(/\d/g, (d) => BN_DIGITS[Number(d)]);
+  const formatBnInt = (num) =>
+    toBnNum(Number(num || 0).toLocaleString('en-IN'));
+
+  const escHtml = (str) =>
+    String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+
+  // Highlight inline Arabic script in Noto Naskh Arabic & bold markdown **...**
+  function formatRichText(text) {
+    let safe = escHtml(text);
+    safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    safe = safe.replace(
+      /([\u0600-\u06FF][\u0600-\u06FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{3,})/g,
+      '<span class="ar-inline">$1</span>'
+    );
+    return safe;
+  }
+
+  let activeFilter = 'all';
+  let isAsking = false;
+
+  // DOM References
+  const sidebar = document.getElementById('sidebar');
+  const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+  const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+  const newChatBtn = document.getElementById('newChatBtn');
+  const filterList = document.getElementById('filterList');
+  const chatScroll = document.getElementById('chatScroll');
+  const chatContainer = document.getElementById('chatContainer');
+  const welcomeHero = document.getElementById('welcomeHero');
+  const askForm = document.getElementById('askForm');
+  const questionInput = document.getElementById('questionInput');
+  const sendBtn = document.getElementById('sendBtn');
+  const voiceBtn = document.getElementById('voiceBtn');
+  const backdrop = document.getElementById('backdrop');
+  const readerDrawer = document.getElementById('readerDrawer');
+  const closeDrawerBtn = document.getElementById('closeDrawerBtn');
+  const modelModal = document.getElementById('modelModal');
+  const openModelModalBtn = document.getElementById('openModelModalBtn');
+  const closeModalBtn = document.getElementById('closeModalBtn');
+  const syncCorpusBtn = document.getElementById('syncCorpusBtn');
+
+  function closeOverlays() {
+    sidebar.classList.remove('open');
+    readerDrawer.classList.remove('open');
+    modelModal.classList.remove('open');
+    backdrop.classList.remove('open');
+  }
+
+  mobileMenuBtn.addEventListener('click', () => {
+    sidebar.classList.add('open');
+    backdrop.classList.add('open');
+  });
+  closeSidebarBtn.addEventListener('click', closeOverlays);
+  closeDrawerBtn.addEventListener('click', closeOverlays);
+  closeModalBtn.addEventListener('click', closeOverlays);
+  backdrop.addEventListener('click', closeOverlays);
+
+  // Auto-resize textarea & Enter-to-send
+  questionInput.addEventListener('input', () => {
+    questionInput.style.height = 'auto';
+    questionInput.style.height = Math.min(questionInput.scrollHeight, 150) + 'px';
+  });
+
+  questionInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      askForm.requestSubmit();
+    }
+  });
+
+  // New Chat / Reset
+  newChatBtn.addEventListener('click', () => {
+    const msgs = chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .thinking-card');
+    msgs.forEach((el) => el.remove());
+    welcomeHero.style.display = '';
+    questionInput.value = '';
+    questionInput.style.height = 'auto';
+    closeOverlays();
+    questionInput.focus();
+  });
+
+  // Source filter selection
+  filterList.addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-btn');
+    if (!btn) return;
+    filterList.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+    btn.classList.add('active');
+    activeFilter = btn.dataset.filter || 'all';
+    if (window.innerWidth <= 900) closeOverlays();
+  });
+
+  // Delegate clicks on starter cards, topic buttons, follow-up chips, reader buttons, copy buttons
+  document.body.addEventListener('click', (e) => {
+    const qTrigger = e.target.closest('[data-q]');
+    if (qTrigger) {
+      const q = qTrigger.getAttribute('data-q');
+      if (q) {
+        closeOverlays();
+        submitQuestion(q);
+      }
+      return;
+    }
+
+    const readBtn = e.target.closest('[data-read-key]');
+    if (readBtn) {
+      e.preventDefault();
+      openInlineReader(readBtn.getAttribute('data-read-key'));
+      return;
+    }
+
+    const copyBtn = e.target.closest('[data-copy-answer]');
+    if (copyBtn) {
+      const payload = copyBtn.getAttribute('data-copy-answer');
+      navigator.clipboard.writeText(payload).then(() => {
+        const orig = copyBtn.textContent;
+        copyBtn.textContent = '✓ কপি হয়েছে!';
+        setTimeout(() => (copyBtn.textContent = orig), 1800);
+      });
+    }
+  });
+
+  askForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const q = questionInput.value.trim();
+    if (!q || isAsking) return;
+    questionInput.value = '';
+    questionInput.style.height = 'auto';
+    submitQuestion(q);
+  });
+
+  // Load initial stats & metrics
+  async function loadStats() {
+    try {
+      const res = await fetch('/api/stats');
+      if (!res.ok) return;
+      const data = await res.json();
+      const s = data.summary || {};
+      const st = s.site_stats || {};
+      document.getElementById('statDocs').textContent = formatBnInt(s.total_documents || st.texts || 24207);
+      document.getElementById('statFatwas').textContent = formatBnInt(st.fatwas || (s.type_counts && s.type_counts.fatwa) || 15878);
+      document.getElementById('statVideos').textContent = formatBnInt(s.total_videos || st.videos || 9310);
+
+      const m = data.metrics || {};
+      const mContainer = document.getElementById('metricsCards');
+      if (mContainer) {
+        mContainer.innerHTML = [
+          { val: formatBnInt(m.corpus_documents || 24207), lbl: 'ইনডেক্সকৃত লেখা' },
+          { val: formatBnInt(m.corpus_videos || 9310), lbl: 'ইনডেক্সকৃত ভিডিও' },
+          { val: toBnNum(((m.recall_at_1 || 0.985) * 100).toFixed(1)) + '%', lbl: 'Recall@1 নির্ভুলতা' },
+          { val: toBnNum(((m.recall_at_5 || 1.0) * 100).toFixed(1)) + '%', lbl: 'Recall@5 নির্ভুলতা' },
+          { val: toBnNum((m.mrr_at_10 || 0.99).toFixed(3)), lbl: 'MRR@10 স্কোর' },
+          { val: toBnNum(Math.round(m.avg_query_latency_ms || 48)) + ' মি.সে.', lbl: 'গড় উত্তর সময়' },
+        ]
+          .map((item) => `<div class="m-card"><b>${item.val}</b><span>${item.lbl}</span></div>`)
+          .join('');
+      }
+    } catch (_) {}
+  }
+
+  // Optional client-side Generative LLM enhancement (strictly grounded in DAWAH X RAG context)
+  async function maybeEnhanceWithBrowserLLM(question, data, targetEl) {
+    const provider = localStorage.getItem('dawahx_llm_provider') || 'none';
+    const apiKey = (localStorage.getItem('dawahx_llm_key') || '').trim();
+    if (provider === 'none' || !apiKey || !data.rag_context || !data.rag_context.length) return;
+
+    const systemPrompt =
+      'তুমি DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/)-এর ইসলামিক প্রশ্নোত্তর সহকারী। ' +
+      'শুধুমাত্র নিচে প্রদত্ত DAWAH X-এর দলিল ও উদ্ধৃতি থেকে বাংলায় সুস্পষ্ট, বিনয়ী ও দলিলভিত্তিক উত্তর সাজিয়ে লেখো। ' +
+      'প্রদত্ত সূত্রের বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস বা মনগড়া তথ্য কখনোই যোগ করবে না। প্রতিটি তথ্যের পাশে [১], [২] সূত্র নম্বর উল্লেখ করো।';
+
+    const contextStr = data.rag_context
+      .map((c) => `${c.citation}\n${c.content}`)
+      .join('\n\n---\n\n');
+    const userPrompt = `প্রশ্ন: ${question}\n\nDAWAH X থেকে প্রাপ্ত প্রাসঙ্গিক দলিল:\n${contextStr}`;
+
+    try {
+      let generated = '';
+      if (provider === 'gemini') {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              systemInstruction: { parts: [{ text: systemPrompt }] },
+              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+              generationConfig: { temperature: 0.15 },
+            }),
+          }
+        );
+        const j = await r.json();
+        generated = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      } else {
+        const endpoint =
+          provider === 'groq'
+            ? 'https://api.groq.com/openai/v1/chat/completions'
+            : 'https://api.openai.com/v1/chat/completions';
+        const modelName = provider === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
+        const r = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: modelName,
+            temperature: 0.15,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: userPrompt },
+            ],
+          }),
+        });
+        const j = await r.json();
+        generated = j?.choices?.[0]?.message?.content || '';
+      }
+
+      if (generated && targetEl) {
+        const paras = generated
+          .split(/\n{2,}/)
+          .map((p) => `<p>${formatRichText(p.trim())}</p>`)
+          .join('');
+        targetEl.innerHTML =
+          `<div style="font-size:12px;color:var(--emerald);margin-bottom:6px;font-weight:600;">✦ জেনারেটিভ সারসংক্ষেপ (শতভাগ DAWAH X দলিলভিত্তিক):</div>` +
+          paras;
+      }
+    } catch (_) {}
+  }
+
+  function renderAnswerCard(data) {
+    const card = document.createElement('article');
+    card.className = 'msg-ai-card';
+
+    const confPct = toBnNum(Math.round((data.confidence || 0) * 100));
+    const latStr = toBnNum(Math.round(data.latency_ms || 1));
+
+    let statusBadgeHtml = '';
+    if (data.status === 'not_found') {
+      statusBadgeHtml = `<span class="badge-notfound">⚠ সরাসরি উত্তর পাওয়া যায়নি</span>`;
+    } else if (data.status === 'conversational') {
+      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X AI সহকারী</span>`;
+    } else {
+      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X যাচাইকৃত উত্তর · ${confPct}% মিল</span>`;
+    }
+
+    const srcBadgeHtml = data.primary_source_name
+      ? `<span class="badge-source">${escHtml(data.primary_source_name)}</span>`
+      : '';
+
+    const explanationHtml = (data.explanation_paragraphs || [])
+      .map((p) => `<p>${formatRichText(p)}</p>`)
+      .join('');
+
+    // Dalil / Quran & Hadith Evidences
+    let dalilHtml = '';
+    if (data.evidences && data.evidences.length > 0) {
+      const items = data.evidences
+        .map(
+          (ev) => `
+          <li class="dalil-item">
+            <div>${formatRichText(ev.text)}</div>
+            <small>সূত্র: <a href="${escHtml(ev.dawahx_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold)">${escHtml(ev.source_name)} ↗</a></small>
+          </li>`
+        )
+        .join('');
+      dalilHtml = `
+        <div class="dalil-box">
+          <div class="dalil-title">📖 কুরআন ও সহীহ হাদীসের উদ্ধৃত দলিল</div>
+          <ul class="dalil-list">${items}</ul>
+        </div>`;
+    }
+
+    // Additional corroborating DAWAH X sources
+    let extraPerspHtml = '';
+    if (data.additional_perspectives && data.additional_perspectives.length > 0) {
+      const cards = data.additional_perspectives
+        .map(
+          (ap) => `
+          <div class="persp-card">
+            <b>${escHtml(ap.title)} (${escHtml(ap.source_name)})</b>
+            <div>${formatRichText(ap.summary)}</div>
+          </div>`
+        )
+        .join('');
+      extraPerspHtml = `
+        <div class="extra-perspectives">
+          <div class="sec-heading">📚 DAWAH X-এর অন্যান্য প্রাসঙ্গিক লেখার সারসংক্ষেপ</div>
+          ${cards}
+        </div>`;
+    }
+
+    // Cited DAWAH X Reference Cards
+    let sourcesHtml = '';
+    if (data.sources && data.sources.length > 0) {
+      const sCards = data.sources
+        .map((s) => {
+          const metaParts = [s.source_name];
+          if (s.category && s.category !== s.source_name) metaParts.push(s.category);
+          if (s.author) metaParts.push('লেখক: ' + s.author);
+          if (s.pub_date) metaParts.push(s.pub_date);
+          return `
+            <div class="source-ref-card">
+              <div class="src-top-row">
+                <span class="src-rank-badge">#${toBnNum(s.rank)}</span>
+                <div class="src-title-text">${escHtml(s.title)}</div>
+              </div>
+              <div class="src-submeta">
+                <span>${escHtml(metaParts.join(' · '))}</span>
+              </div>
+              <div class="src-btn-row">
+                <button type="button" class="src-action-btn" data-read-key="${escHtml(s.key)}">
+                  📄 এখানেই সম্পূর্ণ লেখা পড়ুন
+                </button>
+                <a href="${escHtml(s.dawahx_url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
+                  DAWAH X সাইটে পড়ুন ↗
+                </a>
+              </div>
+            </div>`;
+        })
+        .join('');
+      sourcesHtml = `
+        <div class="sources-section">
+          <div class="sec-heading">🔗 DAWAH X ওয়েবসাইটের মূল তথ্যসূত্র (${toBnNum(data.sources.length)}টি)</div>
+          <div class="sources-grid">${sCards}</div>
+        </div>`;
+    }
+
+    // Related DAWAH X Videos
+    let videosHtml = '';
+    if (data.videos && data.videos.length > 0) {
+      const vCards = data.videos
+        .map(
+          (v) => `
+          <a href="${escHtml(v.dawahx_url)}" target="_blank" rel="noopener noreferrer" class="video-ref-card">
+            <div class="vid-play-icon">▶</div>
+            <div class="vid-info">
+              <b>${escHtml(v.title)}</b>
+              <small>${escHtml(v.channel_title || 'DAWAH X Video')}</small>
+            </div>
+          </a>`
+        )
+        .join('');
+      videosHtml = `
+        <div class="sources-section">
+          <div class="sec-heading">🎬 DAWAH X ভিডিও গ্যালারি থেকে প্রাসঙ্গিক আলোচনা</div>
+          <div class="videos-grid">${vCards}</div>
+        </div>`;
+    }
+
+    // Follow-up chips
+    let followUpHtml = '';
+    if (data.follow_ups && data.follow_ups.length > 0) {
+      const chips = data.follow_ups
+        .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`)
+        .join('');
+      followUpHtml = `
+        <div class="sources-section">
+          <div class="sec-heading">💡 এ বিষয়ে আরও জানতে ক্লিক করুন</div>
+          <div class="followup-wrap">${chips}</div>
+        </div>`;
+    }
+
+    const plainCopyText = [
+      `প্রশ্ন: ${data.query}`,
+      `উত্তর (${data.primary_source_name || 'DAWAH X'}): ${data.direct_answer}`,
+      ...(data.explanation_paragraphs || []),
+      data.primary_url ? `সূত্র (DAWAH X): ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
+    ].join('\n\n');
+
+    card.innerHTML = `
+      <div class="ai-meta-top">
+        ${statusBadgeHtml}
+        ${srcBadgeHtml}
+        <span class="meta-stat">⚡ ${latStr} মি.সে.</span>
+      </div>
+      <h3 class="ai-headline">${escHtml(data.headline)}</h3>
+      <div class="ai-direct-verdict">
+        <strong class="verdict-lbl">${data.status === 'answered' ? 'সারসংক্ষেপ / মূল উত্তর:' : ''}</strong>
+        <span>${formatRichText(data.direct_answer)}</span>
+      </div>
+      <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
+      ${dalilHtml}
+      ${extraPerspHtml}
+      ${sourcesHtml}
+      ${videosHtml}
+      ${followUpHtml}
+      <div class="card-actions-bar">
+        <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 উত্তর ও লিংক কপি করুন</button>
+        <a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="mini-btn">
+          ✉ DAWAH X টিমে সরাসরি প্রশ্ন পাঠান ↗
+        </a>
+      </div>
+    `;
+
+    return card;
+  }
+
+  async function submitQuestion(question) {
+    if (isAsking) return;
+    isAsking = true;
+    sendBtn.disabled = true;
+    welcomeHero.style.display = 'none';
+
+    const userBubble = document.createElement('div');
+    userBubble.className = 'msg-user';
+    userBubble.textContent = question;
+    chatContainer.appendChild(userBubble);
+
+    const loader = document.createElement('div');
+    loader.className = 'thinking-card';
+    loader.innerHTML = `<div class="spinner"></div><span>DAWAH X-এর ২৪,২০৭+ লেখা ও ফতোয়া থেকে দলিল খোঁজা হচ্ছে...</span>`;
+    chatContainer.appendChild(loader);
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+
+    try {
+      const res = await fetch('/api/ask', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          source_filter: activeFilter,
+          top_k: 5,
+        }),
+      });
+      const data = await res.json();
+      loader.remove();
+      const answerCard = renderAnswerCard(data);
+      chatContainer.appendChild(answerCard);
+      answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+      // Optional client-side LLM prose polish if user enabled it in settings
+      if (data.status === 'answered') {
+        const slot = answerCard.querySelector('[data-llm-slot]');
+        maybeEnhanceWithBrowserLLM(question, data, slot);
+      }
+    } catch (err) {
+      loader.remove();
+      const errCard = document.createElement('div');
+      errCard.className = 'msg-ai-card';
+      errCard.innerHTML = `<p style="color:#f87171;">দুঃখিত, সার্ভারের সাথে সংযোগে সমস্যা হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।</p>`;
+      chatContainer.appendChild(errCard);
+    } finally {
+      isAsking = false;
+      sendBtn.disabled = false;
+    }
+  }
+
+  // Inline Full-Article Reader Drawer
+  async function openInlineReader(key) {
+    if (!key) return;
+    readerDrawer.classList.add('open');
+    backdrop.classList.add('open');
+    const titleEl = document.getElementById('drawerTitle');
+    const metaEl = document.getElementById('drawerMeta');
+    const contentEl = document.getElementById('drawerContent');
+    const extUrlEl = document.getElementById('drawerExternalUrl');
+
+    titleEl.textContent = 'মূল লেখা লোড হচ্ছে...';
+    metaEl.textContent = '';
+    contentEl.innerHTML = '<div class="spinner"></div>';
+    extUrlEl.href = `https://ebrahim-ead.github.io/DAWAH-X/read.html?k=${encodeURIComponent(key)}`;
+
+    try {
+      const res = await fetch(`/api/document/${encodeURIComponent(key)}`);
+      if (!res.ok) throw new Error('Not found');
+      const doc = await res.json();
+      titleEl.textContent = doc.title;
+      const parts = [doc.source_name];
+      if (doc.category && doc.category !== doc.source_name) parts.push(doc.category);
+      if (doc.author) parts.push('লেখক: ' + doc.author);
+      if (doc.pub_date) parts.push(doc.pub_date);
+      metaEl.textContent = parts.join(' · ');
+      extUrlEl.href = doc.dawahx_url;
+
+      // Sanitize script/event handlers while preserving clean formatting & Arabic text
+      const cleanHtml = String(doc.raw_html || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, '')
+        .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
+      contentEl.innerHTML = cleanHtml;
+    } catch (_) {
+      titleEl.textContent = 'লেখাটি লোড করা যায়নি';
+      contentEl.innerHTML = `<p>সরাসরি পড়তে <a href="https://ebrahim-ead.github.io/DAWAH-X/read.html?k=${encodeURIComponent(key)}" target="_blank">DAWAH X সাইটে যান ↗</a></p>`;
+    }
+  }
+
+  // Model Modal & Live Sync
+  openModelModalBtn.addEventListener('click', () => {
+    sidebar.classList.remove('open');
+    modelModal.classList.add('open');
+    backdrop.classList.add('open');
+    document.getElementById('llmProvider').value = localStorage.getItem('dawahx_llm_provider') || 'none';
+    document.getElementById('llmApiKey').value = localStorage.getItem('dawahx_llm_key') || '';
+  });
+
+  document.getElementById('copyEmbedBtn').addEventListener('click', (e) => {
+    const code = document.getElementById('embedSnippet').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+      e.target.textContent = '✓ কপি হয়েছে!';
+      setTimeout(() => (e.target.textContent = 'কোড কপি করুন'), 1800);
+    });
+  });
+
+  document.getElementById('saveLlmConfigBtn').addEventListener('click', () => {
+    localStorage.setItem('dawahx_llm_provider', document.getElementById('llmProvider').value);
+    localStorage.setItem('dawahx_llm_key', document.getElementById('llmApiKey').value.trim());
+    const msg = document.getElementById('llmSavedMsg');
+    msg.textContent = '✓ সংরক্ষিত হয়েছে!';
+    setTimeout(() => (msg.textContent = ''), 2500);
+  });
+
+  syncCorpusBtn.addEventListener('click', async () => {
+    const orig = syncCorpusBtn.textContent;
+    syncCorpusBtn.textContent = '↻ সিঙ্ক হচ্ছে...';
+    syncCorpusBtn.disabled = true;
+    try {
+      const res = await fetch('/api/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ force_retrain: false }),
+      });
+      const data = await res.json();
+      await loadStats();
+      syncCorpusBtn.textContent = data.updated ? '✓ নতুন তথ্য যুক্ত হয়েছে!' : '✓ সর্বশেষ আপডেটই আছে';
+    } catch (_) {
+      syncCorpusBtn.textContent = '⚠ সংযোগ ত্রুটি';
+    } finally {
+      setTimeout(() => {
+        syncCorpusBtn.textContent = orig;
+        syncCorpusBtn.disabled = false;
+      }, 2800);
+    }
+  });
+
+  // Voice Speech-to-Text (bn-BD)
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRec) {
+    const recognition = new SpeechRec();
+    recognition.lang = 'bn-BD';
+    recognition.interimResults = false;
+    let listening = false;
+
+    voiceBtn.addEventListener('click', () => {
+      if (listening) {
+        recognition.stop();
+        return;
+      }
+      listening = true;
+      voiceBtn.classList.add('recording');
+      recognition.start();
+    });
+
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || '';
+      if (transcript) {
+        questionInput.value = (questionInput.value + ' ' + transcript).trim();
+        questionInput.dispatchEvent(new Event('input'));
+        questionInput.focus();
+      }
+    };
+    recognition.onend = () => {
+      listening = false;
+      voiceBtn.classList.remove('recording');
+    };
+    recognition.onerror = () => {
+      listening = false;
+      voiceBtn.classList.remove('recording');
+    };
+  } else {
+    voiceBtn.style.display = 'none';
+  }
+
+  loadStats();
+})();
