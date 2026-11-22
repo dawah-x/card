@@ -103,12 +103,21 @@
   }
 
   function updateLivePrayerBadge() {
-    const btn = document.getElementById('livePrayerBtn');
-    if (!btn || !window.DawahXBrowserAI || !window.DawahXBrowserAI.getPrayerTimes) return;
+    if (!window.DawahXBrowserAI || !window.DawahXBrowserAI.getPrayerTimes) return;
     try {
       const p = window.DawahXBrowserAI.getPrayerTimes(selectedCityId);
-      btn.textContent = `🕌 ${p.city} · ${p.next_waqt_name}: ${p.next_waqt_time}`;
-      btn.title = `${p.city} — বর্তমান: ${p.current_waqt} | পরবর্তী (${p.next_waqt_name}): ${p.next_waqt_time} (${p.countdown_bn} বাকি)`;
+      const label = `🕌 ${p.city} · ${p.next_waqt_name}: ${p.next_waqt_time}`;
+      const tip = `${p.city} — বর্তমান: ${p.current_waqt} | পরবর্তী (${p.next_waqt_name}): ${p.next_waqt_time} (${p.countdown_bn} বাকি)`;
+      const btn = document.getElementById('livePrayerBtn');
+      const mobBtn = document.getElementById('mobilePrayerBtn');
+      if (btn) {
+        btn.textContent = label;
+        btn.title = tip;
+      }
+      if (mobBtn) {
+        mobBtn.textContent = label;
+        mobBtn.title = tip;
+      }
     } catch (_) {}
   }
 
@@ -1729,6 +1738,7 @@
   }
 
   document.getElementById('cmdPaletteBtn')?.addEventListener('click', openCmdPalette);
+  document.getElementById('mobileCmdBtn')?.addEventListener('click', openCmdPalette);
   document.getElementById('cmdSearchInput')?.addEventListener('input', (e) => renderCmdResults(e.target.value));
   document.getElementById('cmdSearchInput')?.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && currentCmdList.length > 0) {

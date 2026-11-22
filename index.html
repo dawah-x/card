@@ -12,7 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=7.0" />
 </head>
 <body>
   <div class="app-shell">
@@ -154,7 +154,7 @@
           <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
           <button type="button" class="desktop-sidebar-btn" id="desktopSidebarToggleBtn" title="সাইডবার লুকান / দেখান (Ctrl+B)" aria-label="সাইডবার টগল করুন">◧</button>
           <div class="model-badge-bar">
-            <strong>DAWAH X AI <span class="ver-tag">v6.0</span></strong>
+            <strong>DAWAH X <span class="ai-pill">AI</span></strong>
             <span class="strict-tag">✓ স্মার্ট কথোপকথন · শতভাগ DAWAH-X দলিলনির্ভর</span>
           </div>
         </div>
@@ -162,10 +162,10 @@
           <button type="button" class="live-broadcast-btn" id="liveStreamBtn" style="display:none;" title="সরাসরি সম্প্রচার দেখুন">
             <span class="pulse-red"></span> <span class="btn-lbl-sm">লাইভ</span>
           </button>
-          <button type="button" class="prayer-pill-btn" id="livePrayerBtn" title="২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার দেখুন">
+          <button type="button" class="prayer-pill-btn desktop-prayer-pill" id="livePrayerBtn" title="২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার দেখুন">
             🕌 নামাজের সময়
           </button>
-          <button type="button" class="hdr-icon-btn" id="cmdPaletteBtn" title="দ্রুত টুলস ও সার্চ মেনু (Ctrl+K)">⚡<span class="kbd-hint">⌘K</span></button>
+          <button type="button" class="hdr-icon-btn desktop-cmd-btn" id="cmdPaletteBtn" title="দ্রুত টুলস ও সার্চ মেনু (Ctrl+K)">⚡<span class="kbd-hint">⌘K</span></button>
           <button type="button" class="hdr-icon-btn" id="hdrTasbihBtn" title="ডিজিটাল তাসবীহ ও যিকির কাউন্টার">📿</button>
           <button type="button" class="hdr-icon-btn" id="fontSizeBtn" title="লেখার আকার পরিবর্তন করুন">অ+</button>
           <button type="button" class="hdr-icon-btn" id="themeToggleBtn" title="দিন / রাত থিম পরিবর্তন করুন">☀️</button>
@@ -174,6 +174,17 @@
           <a href="https://ebrahim-ead.github.io/DAWAH-X/ask.html" target="_blank" rel="noopener noreferrer" class="hdr-link">প্রশ্ন পাঠান ↗</a>
         </div>
       </header>
+
+      <!-- Sleek Mobile Secondary Status & Tools Strip (Phone & Tablet <= 900px) -->
+      <div class="mobile-status-strip" id="mobileStatusStrip">
+        <button type="button" class="mobile-prayer-chip" id="mobilePrayerBtn" data-open-prayer-modal="1" title="২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার">
+          🕌 নামাজের সময়
+        </button>
+        <div class="mobile-strip-right">
+          <button type="button" class="mobile-mini-tool" data-open-miras-modal="1">⚖️ মিরাস</button>
+          <button type="button" class="mobile-mini-tool" id="mobileCmdBtn">⚡ টুলস</button>
+        </div>
+      </div>
 
       <div class="chat-scroll" id="chatScroll">
         <div class="chat-container" id="chatContainer">
@@ -269,9 +280,9 @@
       <strong class="drawer-brand-lbl">DAWAH X — মূল লেখা</strong>
       <div class="drawer-header-btns">
         <button type="button" class="src-action-btn" id="drawerFontBtn" title="লেখার আকার বড়/ছোট করুন">অ+</button>
-        <button type="button" class="src-action-btn" id="drawerCopyLinkBtn" title="শেয়ার লিংক কপি করুন">🔗 লিংক</button>
-        <button type="button" class="src-action-btn" id="drawerMakeCardBtn" title="ফতোয়া কার্ড তৈরি করুন">🖼 কার্ড</button>
-        <a href="#" id="drawerExternalUrl" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">মূল সাইট ↗</a>
+        <button type="button" class="src-action-btn" id="drawerCopyLinkBtn" title="শেয়ার লিংক কপি করুন">🔗<span class="r-lbl"> লিংক</span></button>
+        <button type="button" class="src-action-btn" id="drawerMakeCardBtn" title="ফতোয়া কার্ড তৈরি করুন">🖼<span class="r-lbl"> কার্ড</span></button>
+        <a href="#" id="drawerExternalUrl" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link"><span class="r-lbl">মূল সাইট </span>↗</a>
         <button type="button" class="src-action-btn" id="closeDrawerBtn" aria-label="বন্ধ করুন">✕</button>
       </div>
     </div>
@@ -530,7 +541,7 @@ Content-Type: application/json
   <!-- Toast Notification Pill -->
   <div class="app-toast" id="appToast" role="status" aria-live="polite"></div>
 
-  <script src="browser-ai.js"></script>
-  <script src="app.js"></script>
+  <script src="browser-ai.js?v=7.0"></script>
+  <script src="app.js?v=7.0"></script>
 </body>
 </html>
