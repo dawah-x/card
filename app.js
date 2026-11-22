@@ -1,12 +1,10 @@
-/* ===== DAWAH X AI — Frontend Client Logic ===== */
+/* ===== DAWAH X AI — Clean, Accurate & Complete Client Engine ===== */
 (function () {
   'use strict';
 
   const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
   const toBnNum = (val) =>
     String(val).replace(/\d/g, (d) => BN_DIGITS[Number(d)]);
-  const formatBnInt = (num) =>
-    toBnNum(Number(num || 0).toLocaleString('en-IN'));
 
   const escHtml = (str) =>
     String(str || '')
@@ -29,9 +27,16 @@
     return safe;
   }
 
+  // Check whether a Bengali / English / Arabic answer ended cleanly on sentence punctuation
+  function isCompleteSentence(txt) {
+    const trimmed = String(txt || '').trim();
+    if (!trimmed) return false;
+    return /[।?!.)”'"\]*»﴾]\s*$/u.test(trimmed);
+  }
+
   let activeFilter = 'all';
   let isAsking = false;
-  let backendAvailable = null; // true = Python FastAPI, false = GitHub Pages Browser AI Engine
+  let backendAvailable = null;
   let chatHistory = [];
   let currentSessionId = 'sess_' + Date.now();
   let currentSessionTurns = [];
@@ -40,6 +45,7 @@
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
   const CITY_KEY = 'dawahx_user_city_v4';
+  const ASR_METHOD_KEY = 'dawahx_asr_method';
   const THEME_KEY = 'dawahx_theme_v4';
   const FONTSIZE_KEY = 'dawahx_fontsize_v4';
   const CF_WORKER_KEY = 'dawahx_cf_worker_url_v1';
@@ -49,7 +55,6 @@
     .trim()
     .replace(/\/+$/, '');
 
-  // Support 1-click `?worker=https://...` auto-linking
   try {
     const paramWorker = new URLSearchParams(location.search).get('worker');
     if (paramWorker && /^https?:\/\//i.test(paramWorker.trim())) {
@@ -62,8 +67,7 @@
   let cfAiModelName = 'Llama 3.3 70B';
 
   let selectedCityId = localStorage.getItem(CITY_KEY) || 'dhaka';
-  let activeQuoteMeta = { title: '', source: '', url: '', theme: 'dark', blob: null };
-  let deferredInstallPrompt = null;
+  let selectedAsrMethod = localStorage.getItem(ASR_METHOD_KEY) || 'hanafi';
 
   function loadStoredJson(key, fallback) {
     try {
@@ -105,7 +109,7 @@
       .trim();
     if (!clean) return;
 
-    const utter = new SpeechSynthesisUtterance(clean.slice(0, 1800));
+    const utter = new SpeechSynthesisUtterance(clean.slice(0, 2200));
     const voices = window.speechSynthesis.getVoices() || [];
     const bnVoice = voices.find((v) => /bn[-_]?BD/i.test(v.lang)) || voices.find((v) => /^bn/i.test(v.lang));
     if (bnVoice) utter.voice = bnVoice;
@@ -123,18 +127,13 @@
   function updateLivePrayerBadge() {
     if (!window.DawahXBrowserAI || !window.DawahXBrowserAI.getPrayerTimes) return;
     try {
-      const p = window.DawahXBrowserAI.getPrayerTimes(selectedCityId);
+      const p = window.DawahXBrowserAI.getPrayerTimes(selectedCityId, new Date(), selectedAsrMethod);
       const label = `🕌 ${p.city} · ${p.next_waqt_name}: ${p.next_waqt_time}`;
       const tip = `${p.city} — বর্তমান: ${p.current_waqt} | পরবর্তী (${p.next_waqt_name}): ${p.next_waqt_time} (${p.countdown_bn} বাকি)`;
       const btn = document.getElementById('livePrayerBtn');
-      const mobBtn = document.getElementById('mobilePrayerBtn');
       if (btn) {
         btn.textContent = label;
         btn.title = tip;
-      }
-      if (mobBtn) {
-        mobBtn.textContent = label;
-        mobBtn.title = tip;
       }
     } catch (_) {}
   }
@@ -155,17 +154,9 @@
   const backdrop = document.getElementById('backdrop');
   const readerDrawer = document.getElementById('readerDrawer');
   const closeDrawerBtn = document.getElementById('closeDrawerBtn');
-  const modelModal = document.getElementById('modelModal');
   const prayerModal = document.getElementById('prayerModal');
-  const quoteCardModal = document.getElementById('quoteCardModal');
   const videoModal = document.getElementById('videoModal');
   const videoModalIframe = document.getElementById('videoModalIframe');
-  const openModelModalBtn = document.getElementById('openModelModalBtn');
-  const closeModalBtn = document.getElementById('closeModalBtn');
-  const syncCorpusBtn = document.getElementById('syncCorpusBtn');
-  const mirasModal = document.getElementById('mirasModal');
-  const tasbihModal = document.getElementById('tasbihModal');
-  const cmdModal = document.getElementById('cmdModal');
   const suggestDropdown = document.getElementById('suggestDropdown');
   const pubSourceSelect = document.getElementById('pubSourceSelect');
   const scrollBottomBtn = document.getElementById('scrollBottomBtn');
@@ -215,30 +206,24 @@
   }
 
   function closeOverlays() {
-    sidebar.classList.remove('open');
-    readerDrawer.classList.remove('open');
-    modelModal.classList.remove('open');
-    if (prayerModal) prayerModal.classList.remove('open');
-    if (quoteCardModal) quoteCardModal.classList.remove('open');
-    if (mirasModal) mirasModal.classList.remove('open');
-    if (tasbihModal) tasbihModal.classList.remove('open');
-    if (cmdModal) cmdModal.classList.remove('open');
+    sidebar?.classList.remove('open');
+    readerDrawer?.classList.remove('open');
+    prayerModal?.classList.remove('open');
     if (videoModal) {
       videoModal.classList.remove('open');
       if (videoModalIframe) videoModalIframe.src = '';
     }
     hideSuggestions();
-    backdrop.classList.remove('open');
+    backdrop?.classList.remove('open');
   }
 
-  mobileMenuBtn.addEventListener('click', () => {
-    sidebar.classList.add('open');
-    backdrop.classList.add('open');
+  mobileMenuBtn?.addEventListener('click', () => {
+    sidebar?.classList.add('open');
+    backdrop?.classList.add('open');
   });
-  closeSidebarBtn.addEventListener('click', closeOverlays);
-  closeDrawerBtn.addEventListener('click', closeOverlays);
-  closeModalBtn.addEventListener('click', closeOverlays);
-  backdrop.addEventListener('click', closeOverlays);
+  closeSidebarBtn?.addEventListener('click', closeOverlays);
+  closeDrawerBtn?.addEventListener('click', closeOverlays);
+  backdrop?.addEventListener('click', closeOverlays);
 
   // Auto-resize textarea, Smart Typeahead & Enter-to-send
   questionInput.addEventListener('input', () => {
@@ -389,10 +374,9 @@
   }
 
   // New Chat / Reset
-  newChatBtn.addEventListener('click', () => {
+  newChatBtn?.addEventListener('click', () => {
     stopSpeech();
-    const msgs = chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .msg-ai-chat, .thinking-card');
-    msgs.forEach((el) => el.remove());
+    chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .msg-ai-chat, .thinking-card').forEach((el) => el.remove());
     chatHistory = [];
     currentSessionTurns = [];
     currentSessionId = 'sess_' + Date.now();
@@ -404,8 +388,8 @@
     questionInput.focus();
   });
 
-  // Source filter selection (Category buttons + 7-Publication Granular Selector)
-  filterList.addEventListener('click', (e) => {
+  // Source filter selection
+  filterList?.addEventListener('click', (e) => {
     const btn = e.target.closest('.filter-btn');
     if (!btn) return;
     filterList.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
@@ -418,17 +402,17 @@
   pubSourceSelect?.addEventListener('change', () => {
     const val = pubSourceSelect.value;
     if (val) {
-      filterList.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+      filterList?.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
       activeFilter = val;
     } else {
-      const allBtn = filterList.querySelector('[data-filter="all"]');
+      const allBtn = filterList?.querySelector('[data-filter="all"]');
       if (allBtn) allBtn.classList.add('active');
       activeFilter = 'all';
     }
     if (window.innerWidth <= 900) closeOverlays();
   });
 
-  // Delegate clicks on starter cards, topic buttons, follow-up chips, reader buttons, copy buttons
+  // Delegate clicks on starter cards, topic buttons, follow-up chips, reader buttons, copy/share/bookmark buttons
   document.body.addEventListener('click', (e) => {
     const qTrigger = e.target.closest('[data-q]');
     if (qTrigger) {
@@ -467,7 +451,7 @@
         navigator.share({ title: `DAWAH X AI — ${qText}`, url: shareUrl }).catch(() => {});
       } else {
         navigator.clipboard.writeText(shareUrl).then(() => {
-          showToast('✓ প্রশ্নের সরাসরি লিংক কপি হয়েছে!');
+          showToast('✓ প্রশ্নের লিংক কপি হয়েছে!');
         });
       }
       return;
@@ -482,7 +466,7 @@
     const bmBtn = e.target.closest('[data-bookmark-key]');
     if (bmBtn) {
       const key = bmBtn.getAttribute('data-bookmark-key');
-      const title = bmBtn.getAttribute('data-bookmark-title') || 'সংরক্ষিত ফতোয়া';
+      const title = bmBtn.getAttribute('data-bookmark-title') || 'সংরক্ষিত উত্তর';
       const bookmarks = loadStoredJson(BOOKMARKS_KEY, []);
       const exists = bookmarks.some((b) => b.key === key);
       let next;
@@ -536,18 +520,6 @@
       return;
     }
 
-    const openMirasTrigger = e.target.closest('[data-open-miras-modal]');
-    if (openMirasTrigger) {
-      openMirasModal();
-      return;
-    }
-
-    const openTasbihTrigger = e.target.closest('[data-open-tasbih-modal]');
-    if (openTasbihTrigger) {
-      openTasbihModal();
-      return;
-    }
-
     const playVidTrigger = e.target.closest('[data-play-video]');
     if (playVidTrigger) {
       e.preventDefault();
@@ -555,17 +527,6 @@
         playVidTrigger.getAttribute('data-play-video'),
         playVidTrigger.getAttribute('data-video-title') || 'DAWAH X Video'
       );
-      return;
-    }
-
-    const quoteBtn = e.target.closest('[data-quote-card]');
-    if (quoteBtn) {
-      openQuoteCardModal({
-        text: quoteBtn.getAttribute('data-quote-card') || '',
-        title: quoteBtn.getAttribute('data-quote-title') || '',
-        source: quoteBtn.getAttribute('data-quote-source') || 'DAWAH X',
-        key: quoteBtn.getAttribute('data-quote-key') || '',
-      });
       return;
     }
   });
@@ -579,70 +540,33 @@
     submitQuestion(q);
   });
 
-  // Load initial stats & metrics (works on BOTH Python FastAPI AND static GitHub Pages!)
-  async function loadStats() {
+  // Warm corpus index & probe optional local FastAPI backend
+  async function initCorpusWarmup() {
     try {
-      let data = null;
-      if (backendAvailable !== false && !location.hostname.endsWith('.github.io')) {
+      if (backendAvailable !== false && !location.hostname.endsWith('.github.io') && !location.hostname.endsWith('.workers.dev')) {
         try {
           const res = await fetch('api/stats');
           const ctype = res.headers.get('content-type') || '';
-          if (res.ok && ctype.includes('application/json')) {
-            data = await res.json();
-            backendAvailable = true;
-          } else {
-            backendAvailable = false;
-          }
+          backendAvailable = Boolean(res.ok && ctype.includes('application/json'));
         } catch (_) {
           backendAvailable = false;
         }
       } else {
         backendAvailable = false;
       }
-
-      if (!data && window.DawahXBrowserAI) {
-        data = await window.DawahXBrowserAI.getStats();
-      }
-      if (!data) return;
-
-      const s = data.summary || {};
-      const st = s.site_stats || {};
-      document.getElementById('statDocs').textContent = formatBnInt(s.total_documents || st.texts || 24207);
-      document.getElementById('statFatwas').textContent = formatBnInt(st.fatwas || (s.type_counts && s.type_counts.fatwa) || 15878);
-      document.getElementById('statVideos').textContent = formatBnInt(s.total_videos || st.videos || 9310);
-
-      const m = data.metrics || {};
-      const mContainer = document.getElementById('metricsCards');
-      if (mContainer) {
-        mContainer.innerHTML = [
-          { val: formatBnInt(m.corpus_documents || 24207), lbl: 'ইনডেক্সকৃত লেখা' },
-          { val: formatBnInt(m.corpus_videos || 9310), lbl: 'ইনডেক্সকৃত ভিডিও' },
-          { val: toBnNum(((m.recall_at_1 || 0.985) * 100).toFixed(1)) + '%', lbl: 'Recall@1 নির্ভুলতা' },
-          { val: toBnNum(((m.recall_at_5 || 1.0) * 100).toFixed(1)) + '%', lbl: 'Recall@5 নির্ভুলতা' },
-          { val: toBnNum((m.mrr_at_10 || 0.99).toFixed(3)), lbl: 'MRR@10 স্কোর' },
-          { val: toBnNum(Math.round(m.avg_query_latency_ms || 48)) + ' মি.সে.', lbl: 'গড় উত্তর সময়' },
-        ]
-          .map((item) => `<div class="m-card"><b>${item.val}</b><span>${item.lbl}</span></div>`)
-          .join('');
+      if (!backendAvailable && window.DawahXBrowserAI) {
+        await window.DawahXBrowserAI.init();
       }
     } catch (_) {}
   }
 
-  // Cloudflare Workers AI Auto-Discovery + Live Streaming Generative RAG & Conversation
   function updateCfStatusUI() {
     const pill = document.getElementById('headerAiPill');
-    const badge = document.getElementById('cfAiStatusBadge');
     if (pill) {
       pill.classList.toggle('cf-live', cfAiAvailable);
       pill.title = cfAiAvailable
-        ? `Cloudflare Workers AI সক্রিয় (${cfAiModelName} · Live Streaming)`
+        ? `Cloudflare Workers AI সক্রিয় (${cfAiModelName})`
         : 'DAWAH X AI ইঞ্জিন';
-    }
-    if (badge) {
-      badge.classList.toggle('live', cfAiAvailable);
-      badge.textContent = cfAiAvailable
-        ? '🟢 সক্রিয় · Cloudflare AI (Llama 3.3 70B)'
-        : '⚪ স্ট্যান্ডঅ্যালোন ব্রাউজার মোড';
     }
   }
 
@@ -652,7 +576,6 @@
         ? String(explicitUrl || '').trim().replace(/\/+$/, '')
         : (localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL).trim().replace(/\/+$/, '');
 
-    // Use fast same-origin relative path when already hosted on the Worker origin (skips CORS preflight!)
     if (candidateBase && location.origin === candidateBase) {
       candidateBase = '';
     }
@@ -696,12 +619,10 @@
   }
 
   function applyGeneratedAnswerToCard(answerCard, data, generatedText) {
-    if (!generatedText) return;
     data.ai_generated = generatedText;
-    // Update last assistant history entry & persisted session so follow-ups remember the AI synthesis
     for (let i = chatHistory.length - 1; i >= 0; i--) {
       if (chatHistory[i].role === 'assistant') {
-        chatHistory[i].text = generatedText.slice(0, 1100);
+        chatHistory[i].text = generatedText.slice(0, 1400);
         break;
       }
     }
@@ -721,6 +642,57 @@
     }
   }
 
+  // Stream a single SSE pass from Cloudflare Workers AI, properly flushing trailing multi-byte UTF-8 chunks
+  async function streamCloudflarePass(aiUrl, payloadBody, onToken) {
+    const res = await fetch(aiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payloadBody),
+    });
+    if (!res.ok || !res.body) throw new Error('Stream unavailable');
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let sseBuf = '';
+    let passText = '';
+    let hadStreamError = false;
+
+    const processLine = (rawLine) => {
+      const line = rawLine.trim();
+      if (!line.startsWith('data:')) return;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === '[DONE]') return;
+      try {
+        const evt = JSON.parse(payload);
+        if (evt.error) {
+          hadStreamError = true;
+          return;
+        }
+        if (typeof evt.token === 'string' && evt.token) {
+          passText += evt.token;
+          onToken(evt.token);
+        }
+      } catch (_) {}
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      sseBuf += decoder.decode(value, { stream: true });
+      const lines = sseBuf.split(/\r?\n/);
+      sseBuf = lines.pop() || '';
+      for (const ln of lines) processLine(ln);
+    }
+
+    // Flush remaining decoder bytes + trailing line
+    sseBuf += decoder.decode();
+    for (const ln of sseBuf.split(/\r?\n/)) {
+      if (ln.trim()) processLine(ln);
+    }
+
+    return { passText, hadStreamError };
+  }
+
   async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
     // Never overwrite deterministic built-in tools (Prayer Times, Hijri Date, Clock, Zakat Math, Masnoon Duas, Quizzes, Recent Articles)!
     if (!targetEl || data.is_deterministic_tool) return;
@@ -734,202 +706,127 @@
           ? 'grounded'
           : 'chat';
 
-    // 1) Primary: Cloudflare Workers AI Live Token Streaming (zero API key needed by visitors!)
-    if (cfAiAvailable) {
-      const aiUrl = cfAiEndpointBase ? `${cfAiEndpointBase}/api/ai` : 'api/ai';
-      const fallbackHtml = targetEl.innerHTML;
-      let streamBody = null;
-      let statusSpan = null;
+    if (!cfAiAvailable) return;
 
-      if (isBubble) {
-        targetEl.innerHTML = `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>`;
-        streamBody = targetEl.querySelector('[data-stream-body]');
-      } else {
-        targetEl.innerHTML =
-          `<div class="ai-stream-box">` +
-          `<div class="ai-stream-head">` +
-          `<span data-stream-status>✦ DAWAH X AI ব্যাখ্যা সাজাচ্ছে...</span>` +
-          `<small>শতভাগ DAWAH X দলিলভিত্তিক</small>` +
-          `</div>` +
-          `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
-          `</div>` +
-          (fallbackHtml.trim()
-            ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
-            : '');
-        streamBody = targetEl.querySelector('[data-stream-body]');
-        statusSpan = targetEl.querySelector('[data-stream-status]');
-      }
+    const aiUrl = cfAiEndpointBase ? `${cfAiEndpointBase}/api/ai` : 'api/ai';
+    const fallbackHtml = targetEl.innerHTML;
+    let streamBody = null;
+    let statusSpan = null;
 
-      try {
-        const res = await fetch(aiUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            question,
-            mode,
-            stream: true,
-            headline: data.headline || '',
-            primary_verdict: hasRag ? data.direct_answer || '' : '',
-            history: (historySnapshot || chatHistory.slice(0, -2)).slice(-8),
-            rag_context: hasRag ? data.rag_context.slice(0, 5) : [],
-            evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 4) : [],
-          }),
-        });
-
-        if (!res.ok || !res.body) throw new Error('Stream unavailable');
-
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let sseBuf = '';
-        let fullText = '';
-        let rafScheduled = false;
-
-        const flushRender = (doneNow) => {
-          rafScheduled = false;
-          if (!streamBody) return;
-          if (!fullText && !doneNow) return;
-          streamBody.innerHTML =
-            formatRichText(fullText.trim()) + (doneNow ? '' : '<span class="stream-cursor"></span>');
-        };
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          sseBuf += decoder.decode(value, { stream: true });
-          const lines = sseBuf.split(/\r?\n/);
-          sseBuf = lines.pop() || '';
-
-          for (const rawLine of lines) {
-            const line = rawLine.trim();
-            if (!line.startsWith('data:')) continue;
-            const payload = line.slice(5).trim();
-            if (payload === '[DONE]') continue;
-            try {
-              const evt = JSON.parse(payload);
-              if (typeof evt.token === 'string' && evt.token) {
-                fullText += evt.token;
-                if (!rafScheduled) {
-                  rafScheduled = true;
-                  requestAnimationFrame(() => flushRender(false));
-                }
-              }
-            } catch (_) {}
-          }
-        }
-
-        const cleaned = fullText.trim();
-        if (cleaned) {
-          flushRender(true);
-          if (statusSpan) statusSpan.textContent = `✓ DAWAH X AI বিশ্লেষণ · ${cfAiModelName}`;
-          applyGeneratedAnswerToCard(answerCard, data, cleaned);
-          return;
-        }
-        targetEl.innerHTML = fallbackHtml;
-        return;
-      } catch (_) {
-        targetEl.innerHTML = fallbackHtml;
-      }
+    if (isBubble) {
+      targetEl.innerHTML = `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>`;
+      streamBody = targetEl.querySelector('[data-stream-body]');
+    } else {
+      targetEl.innerHTML =
+        `<div class="ai-stream-box">` +
+        `<div class="ai-stream-head">` +
+        `<span data-stream-status>✦ বিস্তারিত ব্যাখ্যা তৈরি হচ্ছে...</span>` +
+        `<small>DAWAH X দলিলভিত্তিক</small>` +
+        `</div>` +
+        `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
+        `</div>` +
+        (fallbackHtml.trim()
+          ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
+          : '');
+      streamBody = targetEl.querySelector('[data-stream-body]');
+      statusSpan = targetEl.querySelector('[data-stream-status]');
     }
 
-    // 2) Secondary Optional Fallback: User-provided Gemini / Groq / OpenAI Key in Browser
-    const provider = localStorage.getItem('dawahx_llm_provider') || 'none';
-    const apiKey = (localStorage.getItem('dawahx_llm_key') || '').trim();
-    if (provider === 'none' || !apiKey) return;
-
-    const recentTurns = (historySnapshot || chatHistory)
-      .slice(-6)
-      .map((t) => `${t.role === 'user' ? 'ব্যবহারকারী' : 'DAWAH X AI'}: ${t.text}`)
-      .join('\n');
-
-    const systemPrompt = hasRag
-      ? 'তুমি DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/)-এর বন্ধুভাবাপন্ন ও বিনয়ী ইসলামিক সহকারী। ' +
-        'ব্যবহারকারীর সাথে স্বাভাবিক ও আন্তরিক বাংলায় কথা বলো এবং শুধুমাত্র নিচে প্রদত্ত DAWAH X-এর দলিল ও উদ্ধৃতি থেকে উত্তর সাজিয়ে লেখো। ' +
-        'প্রদত্ত সূত্রের বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস বা মনগড়া তথ্য কখনোই যোগ করবে না। প্রতিটি তথ্যের পাশে [১], [২] সূত্র নম্বর উল্লেখ করো।'
-      : 'তুমি DAWAH X-এর বন্ধুভাবাপন্ন বাংলা কথোপকথন সহকারী। ব্যবহারকারীর সাথে একদম স্বাভাবিক, আন্তরিক ও সুন্দর বাংলায় কথাবার্তা বলো। ' +
-        'তবে যদি ব্যবহারকারী কোনো শরঈ মাসআলা বা ফতোয়া জানতে চান যার DAWAH X দলিল দেওয়া নেই, তবে কখনোই নিজের থেকে ফতোয়া দেবে না—বরং বিনয়ের সাথে জানাবে যে DAWAH X সংগ্রহে এ বিষয়ে সরাসরি ফতোয়া পাওয়া যায়নি।';
-
-    const contextStr = hasRag
-      ? data.rag_context.map((c) => `${c.citation}\n${c.content}`).join('\n\n---\n\n')
-      : '';
-    const userPrompt = hasRag
-      ? `পূর্ববর্তী আলাপ:\n${recentTurns}\n\nবর্তমান প্রশ্ন: ${question}\n\nDAWAH X থেকে প্রাপ্ত প্রাসঙ্গিক দলিল:\n${contextStr}`
-      : `পূর্ববর্তী আলাপ:\n${recentTurns}\n\nব্যবহারকারীর বার্তা: ${question}`;
-
     try {
-      let generated = '';
-      if (provider === 'gemini') {
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(apiKey)}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-              generationConfig: { temperature: 0.15 },
-            }),
-          }
-        );
-        const j = await r.json();
-        generated = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      } else {
-        const endpoint =
-          provider === 'groq'
-            ? 'https://api.groq.com/openai/v1/chat/completions'
-            : 'https://api.openai.com/v1/chat/completions';
-        const modelName = provider === 'groq' ? 'llama-3.3-70b-versatile' : 'gpt-4o-mini';
-        const r = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: modelName,
-            temperature: 0.15,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-          }),
-        });
-        const j = await r.json();
-        generated = j?.choices?.[0]?.message?.content || '';
+      let fullText = '';
+      let rafScheduled = false;
+
+      const flushRender = (doneNow) => {
+        rafScheduled = false;
+        if (!streamBody) return;
+        if (!fullText && !doneNow) return;
+        streamBody.innerHTML =
+          formatRichText(fullText.trim()) + (doneNow ? '' : '<span class="stream-cursor"></span>');
+      };
+
+      const onChunk = () => {
+        if (!rafScheduled) {
+          rafScheduled = true;
+          requestAnimationFrame(() => flushRender(false));
+        }
+      };
+
+      const basePayload = {
+        question,
+        mode,
+        stream: true,
+        headline: data.headline || '',
+        primary_verdict: hasRag ? data.direct_answer || '' : '',
+        history: (historySnapshot || chatHistory.slice(0, -2)).slice(-6),
+        rag_context: hasRag ? data.rag_context.slice(0, 3) : [],
+        evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 3) : [],
+      };
+
+      const firstPass = await streamCloudflarePass(aiUrl, basePayload, (tok) => {
+        fullText += tok;
+        onChunk();
+      });
+
+      // If stream errored before producing a meaningful answer, restore complete verbatim DAWAH X text!
+      if (firstPass.hadStreamError && fullText.trim().length < 140) {
+        targetEl.innerHTML = fallbackHtml;
+        return;
       }
 
-      if (generated && targetEl) {
-        if (isBubble) {
-          targetEl.innerHTML = `<div class="ai-stream-body">${formatRichText(generated.trim())}</div>`;
-        } else {
-          const origHtml = targetEl.innerHTML;
-          targetEl.innerHTML =
-            `<div class="ai-stream-box">` +
-            `<div class="ai-stream-head"><span>✦ জেনারেটিভ বিশ্লেষণ (শতভাগ DAWAH X দলিলভিত্তিক)</span></div>` +
-            `<div class="ai-stream-body">${formatRichText(generated.trim())}</div>` +
-            `</div>` +
-            (origHtml.trim()
-              ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${origHtml}</details>`
-              : '');
-        }
-        applyGeneratedAnswerToCard(answerCard, data, generated.trim());
+      // Seamless Auto-Continuation: if answer hit token boundary mid-sentence, automatically complete it!
+      if (fullText.trim().length >= 90 && !isCompleteSentence(fullText)) {
+        try {
+          await streamCloudflarePass(
+            aiUrl,
+            {
+              ...basePayload,
+              mode: 'continue',
+              partial_answer: fullText,
+            },
+            (tok) => {
+              const needsSpace =
+                fullText &&
+                !/\s$/.test(fullText) &&
+                !/^[\s।?!.,:;)\]”'"]/u.test(tok);
+              fullText += (needsSpace ? ' ' : '') + tok;
+              onChunk();
+            }
+          );
+        } catch (_) {}
       }
-    } catch (_) {}
+
+      const cleaned = fullText.trim();
+      if (cleaned && isCompleteSentence(cleaned)) {
+        flushRender(true);
+        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+        applyGeneratedAnswerToCard(answerCard, data, cleaned);
+        return;
+      }
+      if (cleaned.length >= 180) {
+        fullText = cleaned + '।';
+        flushRender(true);
+        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+        applyGeneratedAnswerToCard(answerCard, data, fullText);
+        return;
+      }
+
+      targetEl.innerHTML = fallbackHtml;
+    } catch (_) {
+      targetEl.innerHTML = fallbackHtml;
+    }
   }
 
   function renderAnswerCard(data) {
     const card = document.createElement('article');
     card.className = 'msg-ai-card';
 
-    const confPct = toBnNum(Math.round((data.confidence || 0) * 100));
-    const latStr = toBnNum(Math.round(data.latency_ms || 1));
-
     let statusBadgeHtml = '';
     if (data.status === 'not_found') {
       statusBadgeHtml = `<span class="badge-notfound">⚠ সরাসরি উত্তর পাওয়া যায়নি</span>`;
     } else if (data.status === 'conversational') {
-      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X AI সহকারী</span>`;
+      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X AI</span>`;
     } else {
-      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X যাচাইকৃত উত্তর · ${confPct}% মিল</span>`;
+      statusBadgeHtml = `<span class="badge-verified">✓ যাচাইকৃত দলিলভিত্তিক উত্তর</span>`;
     }
 
     const srcBadgeHtml = data.primary_source_name
@@ -942,7 +839,7 @@
     const explanationHtml = data.ai_generated
       ? data.is_chat || data.status === 'conversational' || data.status === 'not_found'
         ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
-        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ DAWAH X AI বিশ্লেষণ</span><small>শতভাগ DAWAH X দলিলভিত্তিক</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
+        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
           (rawExplanationHtml
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${rawExplanationHtml}</details>`
             : '')
@@ -958,7 +855,7 @@
             <div>${formatRichText(ev.text)}</div>
             <div class="dalil-item-head">
               <small>সূত্র: <a href="${escHtml(ev.dawahx_url)}" target="_blank" rel="noopener noreferrer" style="color:var(--gold)">${escHtml(ev.source_name)} ↗</a></small>
-              <button type="button" class="dalil-copy-btn" data-copy-answer="${escHtml(ev.text + ' — ' + ev.source_name)}">📋 দলিল কপি</button>
+              <button type="button" class="dalil-copy-btn" data-copy-answer="${escHtml(ev.text + ' — ' + ev.source_name)}">📋 কপি</button>
             </div>
           </li>`
         )
@@ -967,25 +864,6 @@
         <div class="dalil-box">
           <div class="dalil-title">📖 কুরআন ও সহীহ হাদীসের উদ্ধৃত দলিল</div>
           <ul class="dalil-list">${items}</ul>
-        </div>`;
-    }
-
-    // Additional corroborating DAWAH X sources
-    let extraPerspHtml = '';
-    if (data.additional_perspectives && data.additional_perspectives.length > 0) {
-      const cards = data.additional_perspectives
-        .map(
-          (ap) => `
-          <div class="persp-card">
-            <b>${escHtml(ap.title)} (${escHtml(ap.source_name)})</b>
-            <div>${formatRichText(ap.summary)}</div>
-          </div>`
-        )
-        .join('');
-      extraPerspHtml = `
-        <div class="extra-perspectives">
-          <div class="sec-heading">📚 DAWAH X-এর অন্যান্য প্রাসঙ্গিক লেখার সারসংক্ষেপ</div>
-          ${cards}
         </div>`;
     }
 
@@ -1009,10 +887,10 @@
               </div>
               <div class="src-btn-row">
                 <button type="button" class="src-action-btn" data-read-key="${escHtml(s.key)}">
-                  📄 এখানেই সম্পূর্ণ লেখা পড়ুন
+                  📄 সম্পূর্ণ লেখা পড়ুন
                 </button>
                 <a href="${escHtml(s.dawahx_url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
-                  DAWAH X সাইটে পড়ুন ↗
+                  মূল সাইটে দেখুন ↗
                 </a>
               </div>
             </div>`;
@@ -1020,7 +898,7 @@
         .join('');
       sourcesHtml = `
         <div class="sources-section">
-          <div class="sec-heading">🔗 DAWAH X ওয়েবসাইটের মূল তথ্যসূত্র (${toBnNum(data.sources.length)}টি)</div>
+          <div class="sec-heading">🔗 DAWAH X তথ্যসূত্র (${toBnNum(data.sources.length)}টি)</div>
           <div class="sources-grid ${data.sources.length >= 2 ? 'multi-src' : ''}">${sCards}</div>
         </div>`;
     }
@@ -1042,12 +920,12 @@
         .join('');
       videosHtml = `
         <div class="sources-section">
-          <div class="sec-heading">🎬 DAWAH X ভিডিও গ্যালারি থেকে প্রাসঙ্গিক আলোচনা</div>
+          <div class="sec-heading">🎬 প্রাসঙ্গিক ভিডিও আলোচনা</div>
           <div class="videos-grid">${vCards}</div>
         </div>`;
     }
 
-    // Natural Conversational Bubble Mode (for greetings, everyday small talk, follow-up elaborations, or gentle unmatched replies)
+    // Conversational / Tool Bubble Mode
     if (data.is_chat || data.status === 'conversational' || data.status === 'not_found') {
       const wrap = document.createElement('article');
       wrap.className = 'msg-ai-chat';
@@ -1059,7 +937,7 @@
 
       const notFoundAction =
         data.status === 'not_found'
-          ? `<div style="margin-top:4px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
+          ? `<div style="margin-top:6px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
           : '';
 
       const ttsChatPayload = data.ai_generated || [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
@@ -1089,7 +967,7 @@
     if (data.reader_scenario && data.reader_scenario.length > 180 && data.reader_scenario !== data.headline) {
       scenarioHtml = `
         <details class="scenario-details">
-          <summary>📋 প্রশ্নকারীর সম্পূর্ণ প্রশ্ন ও প্রেক্ষাপট দেখুন</summary>
+          <summary>📋 মূল প্রশ্ন ও প্রেক্ষাপট দেখুন</summary>
           <p>${escHtml(data.reader_scenario)}</p>
         </details>`;
     }
@@ -1112,103 +990,54 @@
         </div>`;
     }
 
-    // Follow-up chips + natural conversational follow-up triggers for grounded answers
-    const convTriggers = [];
-    if (data.extra_body && data.extra_body.length > 260) {
-      convTriggers.push(`<button type="button" class="followup-chip" data-q="আরেকটু বিস্তারিত বলো">💬 আরেকটু বিস্তারিত বলো</button>`);
-    }
-    if (data.evidences && data.evidences.length > 0) {
-      convTriggers.push(`<button type="button" class="followup-chip" data-q="এর দলিল কী?">📖 দলিলগুলো আলাদা করে দেখাও</button>`);
-    }
-    if (data.videos && data.videos.length > 0) {
-      convTriggers.push(`<button type="button" class="followup-chip" data-q="এ বিষয়ে ভিডিও আছে?">🎬 ভিডিও আলোচনা দেখুন</button>`);
-    }
-    const topicChips = (data.follow_ups || []).map(
-      (fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`
-    );
-    const allChips = [...convTriggers, ...topicChips].join('');
-    let followUpHtml = '';
-    if (allChips) {
-      followUpHtml = `
+    // Clean related follow-up questions
+    const topicChips = (data.follow_ups || [])
+      .slice(0, 4)
+      .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`)
+      .join('');
+    const followUpHtml = topicChips
+      ? `
         <div class="sources-section">
-          <div class="sec-heading">💡 কথোপকথন চালিয়ে যান বা আরও জানুন</div>
-          <div class="followup-wrap">${allChips}</div>
-        </div>`;
-    }
+          <div class="sec-heading">💡 প্রাসঙ্গিক অন্যান্য প্রশ্ন</div>
+          <div class="followup-wrap">${topicChips}</div>
+        </div>`
+      : '';
 
     const plainCopyText = [
       `প্রশ্ন: ${data.query}`,
-      `উত্তর (${data.primary_source_name || 'DAWAH X'}): ${data.direct_answer}`,
-      ...(data.explanation_paragraphs || []),
-      data.primary_url ? `সূত্র (DAWAH X): ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
+      `উত্তর (${data.primary_source_name || 'DAWAH X'}): ${data.ai_generated || data.direct_answer}`,
+      ...(data.ai_generated ? [] : data.explanation_paragraphs || []),
+      data.primary_url ? `সূত্র: ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
     ].join('\n\n');
 
-    const ttsFullText = [data.headline, data.direct_answer, ...(data.explanation_paragraphs || [])].join('। ');
-    const waShareUrl = `https://wa.me/?text=${encodeURIComponent(plainCopyText.slice(0, 1200))}`;
+    const ttsFullText = [data.headline, data.ai_generated || data.direct_answer, ...(data.ai_generated ? [] : data.explanation_paragraphs || [])].join('। ');
     const isBookmarked = data.primary_key && loadStoredJson(BOOKMARKS_KEY, []).some((b) => b.key === data.primary_key);
     const bookmarkBtnHtml = data.primary_key
       ? `<button type="button" class="mini-btn ${isBookmarked ? 'bookmarked' : ''}" data-bookmark-key="${escHtml(data.primary_key)}" data-bookmark-title="${escHtml(data.headline)}">${isBookmarked ? '✓ সংরক্ষিত' : '🔖 সংরক্ষণ'}</button>`
       : '';
 
-    const introHtml = data.conversational_intro
-      ? `<div class="ai-conv-intro">${formatRichText(data.conversational_intro)}</div>`
-      : '';
-
-    const quoteSnippet = String(data.direct_answer || '')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .slice(0, 260);
-    const quoteCardBtnHtml = `
-      <button type="button" class="mini-btn"
-        data-quote-card="${escHtml(quoteSnippet)}"
-        data-quote-title="${escHtml(data.headline)}"
-        data-quote-source="${escHtml(data.primary_source_name || 'DAWAH X')}"
-        data-quote-key="${escHtml(data.primary_key || '')}">
-        🖼 ফতোয়া কার্ড
-      </button>`;
-
-    // Contextual Smart Built-in Tool CTA (Fara'id Miras, Prayer Times, Digital Tasbih)
-    let smartToolHtml = '';
-    const qContext = `${data.query || ''} ${data.headline || ''}`;
-    if (/(?:সম্পত্তি|মিরাস|ফারায়েয|ফারায়েজ|ওয়ারিশ|উত্তরাধিকার|তেজ্য|ত্যাজ্য)/u.test(qContext)) {
-      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-miras-modal="1">⚖️ কুরআনিক ফারায়েয / মিরাস ক্যালকুলেটরে অংশ হিসাব করুন ➔</button>`;
-    } else if (/(?:ওয়াক্ত|সাহরী|সেহরি|ইফতার|ফজরের\s*সময়|নামাজের\s*সময়)/u.test(qContext)) {
-      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-prayer-modal="1">🕌 ২৪ জেলার আজকের নামাজ, সেহরি ও ইফতারের সময়সূচি দেখুন ➔</button>`;
-    } else if (/(?:তাসবীহ|যিকির|জিকির|ইস্তিগফার|সুবহানাল্লাহ)/u.test(qContext)) {
-      smartToolHtml = `<button type="button" class="smart-tool-cta" data-open-tasbih-modal="1">📿 ডিজিটাল তাসবীহ ও যিকির কাউন্টার খুলুন ➔</button>`;
-    }
-
     card.innerHTML = `
       <div class="ai-meta-top">
         ${statusBadgeHtml}
         ${srcBadgeHtml}
-        <span class="meta-stat">⚡ ${latStr} মি.সে.</span>
       </div>
-      ${introHtml}
       <h3 class="ai-headline">${escHtml(data.headline)}</h3>
       ${scenarioHtml}
       <div class="ai-direct-verdict">
-        <strong class="verdict-lbl">সারসংক্ষেপ / মূল উত্তর:</strong>
+        <strong class="verdict-lbl">মূল সিদ্ধান্ত:</strong>
         <span>${formatRichText(data.direct_answer)}</span>
       </div>
-      ${smartToolHtml}
       <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
       ${seriesHtml}
       ${dalilHtml}
-      ${extraPerspHtml}
       ${sourcesHtml}
       ${videosHtml}
       ${followUpHtml}
       <div class="card-actions-bar">
         <button type="button" class="mini-btn" data-speak-text="${escHtml(ttsFullText)}">🔊 শুনুন</button>
-        ${quoteCardBtnHtml}
         ${bookmarkBtnHtml}
         <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 কপি</button>
-        <button type="button" class="mini-btn" data-share-q="${escHtml(data.query || data.headline || '')}">🔗 লিংক শেয়ার</button>
-        <a href="${escHtml(waShareUrl)}" target="_blank" rel="noopener noreferrer" class="mini-btn">📲 WhatsApp</a>
-        <a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="mini-btn">
-          ✉ প্রশ্ন পাঠান ↗
-        </a>
+        <button type="button" class="mini-btn" data-share-q="${escHtml(data.query || data.headline || '')}">🔗 শেয়ার</button>
       </div>
     `;
 
@@ -1228,7 +1057,7 @@
 
     const loader = document.createElement('div');
     loader.className = 'thinking-card';
-    loader.innerHTML = `<div class="spinner"></div><span>DAWAH X AI চিন্তা করছে...</span>`;
+    loader.innerHTML = `<div class="spinner"></div><span>উত্তর খোঁজা হচ্ছে...</span>`;
     chatContainer.appendChild(loader);
     chatScroll.scrollTop = chatScroll.scrollHeight;
 
@@ -1256,7 +1085,6 @@
       }
       if (!data) throw new Error('No AI response');
 
-      // Record turn in multi-turn memory & persistent session storage
       chatHistory.push({ role: 'user', text: question });
       chatHistory.push({
         role: 'assistant',
@@ -1277,10 +1105,9 @@
       chatContainer.appendChild(answerCard);
       answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-      // Stream live generative response via Cloudflare Workers AI (or optional Browser LLM) across ALL modes!
       const slot = answerCard.querySelector('[data-llm-slot]');
       maybeEnhanceWithBrowserLLM(question, data, slot, answerCard, historySnapshot);
-    } catch (err) {
+    } catch (_) {
       loader.remove();
       const errCard = document.createElement('div');
       errCard.className = 'msg-ai-card';
@@ -1292,11 +1119,11 @@
     }
   }
 
-  // Inline Full-Article Reader Drawer (works on BOTH Python Backend AND GitHub Pages!)
+  // Inline Full-Article Reader Drawer
   async function openInlineReader(key) {
-    if (!key) return;
+    if (!key || !readerDrawer) return;
     readerDrawer.classList.add('open');
-    backdrop.classList.add('open');
+    backdrop?.classList.add('open');
     const titleEl = document.getElementById('drawerTitle');
     const metaEl = document.getElementById('drawerMeta');
     const contentEl = document.getElementById('drawerContent');
@@ -1338,7 +1165,6 @@
       metaEl.textContent = parts.join(' · ');
       extUrlEl.href = doc.dawahx_url;
 
-      // Sanitize script/event handlers while preserving clean formatting & Arabic text
       const cleanHtml = String(doc.raw_html || '')
         .replace(/<script[\s\S]*?<\/script>/gi, '')
         .replace(/\son\w+\s*=\s*["'][^"']*["']/gi, '');
@@ -1354,7 +1180,7 @@
     }
   }
 
-  // Reader Drawer Search Highlighter, Copy Link & Quote Card Actions
+  // Reader Drawer Search Highlighter & Controls
   document.getElementById('readerSearchInput')?.addEventListener('input', (e) => {
     const contentEl = document.getElementById('drawerContent');
     const badgeEl = document.getElementById('readerMatchBadge');
@@ -1404,12 +1230,12 @@
     navigator.clipboard.writeText(url).then(() => showToast('✓ লেখার লিংক কপি হয়েছে!'));
   });
 
+  const fontSizeBtn = document.getElementById('fontSizeBtn');
   document.getElementById('drawerFontBtn')?.addEventListener('click', () => {
     fontSizeBtn?.click();
     showToast('✓ লেখার আকার পরিবর্তন হয়েছে');
   });
 
-  // Live Reading Progress Bar inside Slide-Over Article Reader
   const drawerBodyEl = document.getElementById('drawerBody');
   const readerProgressEl = document.getElementById('readerProgressBar');
   drawerBodyEl?.addEventListener('scroll', () => {
@@ -1419,115 +1245,9 @@
     readerProgressEl.style.width = pct + '%';
   });
 
-  document.getElementById('drawerMakeCardBtn')?.addEventListener('click', () => {
-    if (!activeReaderDoc) return;
-    openQuoteCardModal({
-      text: (activeReaderDoc.opening_ruling || activeReaderDoc.answer_body || '').slice(0, 280),
-      title: activeReaderDoc.clean_title || activeReaderDoc.title || '',
-      source: activeReaderDoc.source_name || 'DAWAH X',
-      key: activeReaderDoc.key || '',
-    });
-  });
-
-  // Model Modal & Live Sync
-  openModelModalBtn.addEventListener('click', () => {
-    sidebar.classList.remove('open');
-    modelModal.classList.add('open');
-    backdrop.classList.add('open');
-    document.getElementById('llmProvider').value = localStorage.getItem('dawahx_llm_provider') || 'none';
-    document.getElementById('llmApiKey').value = localStorage.getItem('dawahx_llm_key') || '';
-    const cfInput = document.getElementById('cfWorkerUrlInput');
-    if (cfInput) cfInput.value = localStorage.getItem(CF_WORKER_KEY) || DEFAULT_CF_WORKER_URL || '';
-    updateCfStatusUI();
-  });
-
-  document.getElementById('saveCfWorkerBtn')?.addEventListener('click', async () => {
-    const cfInput = document.getElementById('cfWorkerUrlInput');
-    const msgEl = document.getElementById('cfSavedMsg');
-    const rawVal = String(cfInput?.value || '').trim().replace(/\/+$/, '');
-    if (msgEl) {
-      msgEl.style.color = 'var(--gold-bright)';
-      msgEl.textContent = '⏳ Cloudflare Worker সংযোগ পরীক্ষা করা হচ্ছে...';
-    }
-    if (rawVal) {
-      localStorage.setItem(CF_WORKER_KEY, rawVal);
-    } else {
-      localStorage.removeItem(CF_WORKER_KEY);
-    }
-    const ok = await detectCloudflareAI(rawVal);
-    if (msgEl) {
-      if (ok) {
-        msgEl.style.color = 'var(--emerald)';
-        msgEl.textContent = '✓ মাশাআল্লাহ! Cloudflare Workers AI (Llama 3.3 70B) সফলভাবে সংযুক্ত হয়েছে!';
-      } else {
-        msgEl.style.color = '#f87171';
-        msgEl.textContent = rawVal
-          ? '⚠ Worker URL-এ /api/health সাড়া দেয়নি। URL ও [ai] binding যাচাই করুন।'
-          : 'ℹ কাস্টম Worker URL সরানো হয়েছে।';
-      }
-    }
-  });
-
-  document.getElementById('clearCfWorkerBtn')?.addEventListener('click', async () => {
-    localStorage.removeItem(CF_WORKER_KEY);
-    const cfInput = document.getElementById('cfWorkerUrlInput');
-    const msgEl = document.getElementById('cfSavedMsg');
-    if (cfInput) cfInput.value = '';
-    await detectCloudflareAI('');
-    if (msgEl) {
-      msgEl.style.color = 'var(--muted)';
-      msgEl.textContent = '✓ রিসেট হয়েছে।';
-      setTimeout(() => (msgEl.textContent = ''), 2200);
-    }
-  });
-
-  document.getElementById('copyEmbedBtn').addEventListener('click', (e) => {
-    const code = document.getElementById('embedSnippet').textContent;
-    navigator.clipboard.writeText(code).then(() => {
-      e.target.textContent = '✓ কপি হয়েছে!';
-      setTimeout(() => (e.target.textContent = 'কোড কপি করুন'), 1800);
-    });
-  });
-
-  document.getElementById('saveLlmConfigBtn').addEventListener('click', () => {
-    localStorage.setItem('dawahx_llm_provider', document.getElementById('llmProvider').value);
-    localStorage.setItem('dawahx_llm_key', document.getElementById('llmApiKey').value.trim());
-    const msg = document.getElementById('llmSavedMsg');
-    msg.textContent = '✓ সংরক্ষিত হয়েছে!';
-    setTimeout(() => (msg.textContent = ''), 2500);
-  });
-
-  syncCorpusBtn.addEventListener('click', async () => {
-    const orig = syncCorpusBtn.textContent;
-    syncCorpusBtn.textContent = '↻ সিঙ্ক হচ্ছে...';
-    syncCorpusBtn.disabled = true;
-    try {
-      let data = { updated: true };
-      if (backendAvailable === true) {
-        const res = await fetch('api/sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ force_retrain: false }),
-        });
-        data = await res.json();
-      } else if (window.DawahXBrowserAI) {
-        data = await window.DawahXBrowserAI.sync();
-      }
-      await loadStats();
-      syncCorpusBtn.textContent = data.updated ? '✓ সর্বশেষ তথ্য লোড হয়েছে!' : '✓ সর্বশেষ আপডেটই আছে';
-    } catch (_) {
-      syncCorpusBtn.textContent = '⚠ সংযোগ ত্রুটি';
-    } finally {
-      setTimeout(() => {
-        syncCorpusBtn.textContent = orig;
-        syncCorpusBtn.disabled = false;
-      }, 2800);
-    }
-  });
-
   // Voice Speech-to-Text (bn-BD)
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SpeechRec) {
+  if (SpeechRec && voiceBtn) {
     const recognition = new SpeechRec();
     recognition.lang = 'bn-BD';
     recognition.interimResults = false;
@@ -1559,15 +1279,13 @@
       listening = false;
       voiceBtn.classList.remove('recording');
     };
-  } else {
+  } else if (voiceBtn) {
     voiceBtn.style.display = 'none';
   }
 
   // ===== 64-District Prayer, Sehri, Iftar & Hijri Modal =====
   const prayerCitySelect = document.getElementById('prayerCitySelect');
   const prayerAsrSelect = document.getElementById('prayerAsrSelect');
-  const ASR_METHOD_KEY = 'dawahx_asr_method';
-  let selectedAsrMethod = localStorage.getItem(ASR_METHOD_KEY) || 'hanafi';
 
   function renderPrayerModalBody() {
     if (!window.DawahXBrowserAI || !prayerModal) return;
@@ -1623,7 +1341,7 @@
     renderPrayerModalBody();
     if (prayerModal) {
       prayerModal.classList.add('open');
-      backdrop.classList.add('open');
+      backdrop?.classList.add('open');
     }
   }
 
@@ -1641,148 +1359,7 @@
     renderPrayerModalBody();
   });
 
-  // ===== v4.0 1080x1080 HD Quote / Fatwa Card Generator =====
-  const quoteCanvas = document.getElementById('quoteCanvas');
-  const quoteTextEl = document.getElementById('quoteCardText');
-
-  function wrapCanvasLines(ctx, text, maxWidth) {
-    const out = [];
-    for (const para of String(text || '').split('\n')) {
-      const words = para.trim().split(/\s+/).filter(Boolean);
-      let line = '';
-      for (const w of words) {
-        const test = line ? `${line} ${w}` : w;
-        if (ctx.measureText(test).width > maxWidth && line) {
-          out.push(line);
-          line = w;
-        } else {
-          line = test;
-        }
-      }
-      if (line) out.push(line);
-    }
-    return out;
-  }
-
-  async function drawQuoteCardCanvas() {
-    if (!quoteCanvas || !quoteTextEl) return;
-    if (document.fonts && document.fonts.ready) {
-      try { await document.fonts.ready; } catch (_) {}
-    }
-    const ctx = quoteCanvas.getContext('2d');
-    const isLight = activeQuoteMeta.theme === 'light';
-
-    // Background & ornamental double Islamic border
-    ctx.fillStyle = isLight ? '#faf7ee' : '#07171c';
-    ctx.fillRect(0, 0, 1080, 1080);
-
-    ctx.strokeStyle = isLight ? '#b48216' : '#d8aa3e';
-    ctx.lineWidth = 4;
-    ctx.strokeRect(48, 48, 984, 984);
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(62, 62, 956, 956);
-
-    // Header badge
-    ctx.fillStyle = isLight ? '#8a5f06' : '#ffd56a';
-    ctx.font = '700 38px "Hind Siliguri", sans-serif';
-    ctx.fillText('DAWAH X  ·  দলিলভিত্তিক ইসলামিক উত্তর', 100, 138);
-
-    // Question / Title line
-    if (activeQuoteMeta.title) {
-      ctx.fillStyle = isLight ? '#185c47' : '#34d399';
-      ctx.font = '600 30px "Hind Siliguri", sans-serif';
-      const tLines = wrapCanvasLines(ctx, 'প্রশ্ন: ' + activeQuoteMeta.title, 880).slice(0, 2);
-      let ty = 200;
-      for (const tl of tLines) {
-        ctx.fillText(tl, 100, ty);
-        ty += 42;
-      }
-    }
-
-    // Main Answer Quote
-    const val = quoteTextEl.value.trim() || 'উদ্ধৃতি লিখুন...';
-    let fontSize = 48;
-    let lines = [];
-    while (fontSize >= 28) {
-      ctx.font = `600 ${fontSize}px "Hind Siliguri", sans-serif`;
-      lines = wrapCanvasLines(ctx, val, 880);
-      if (lines.length * fontSize * 1.46 <= 520) break;
-      fontSize -= 2;
-    }
-    ctx.fillStyle = isLight ? '#102420' : '#f4f7f6';
-    ctx.font = `600 ${fontSize}px "Hind Siliguri", sans-serif`;
-    let y = activeQuoteMeta.title ? 320 : 260;
-    for (const ln of lines.slice(0, 11)) {
-      ctx.fillText(ln, 100, y);
-      y += fontSize * 1.46;
-    }
-
-    // Footer divider & verified source citation
-    ctx.strokeStyle = isLight ? 'rgba(154,109,11,0.4)' : 'rgba(216,170,62,0.45)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(100, 880);
-    ctx.lineTo(980, 880);
-    ctx.stroke();
-
-    ctx.fillStyle = isLight ? '#7d5604' : '#ffd56a';
-    ctx.font = '700 29px "Hind Siliguri", sans-serif';
-    ctx.fillText(`সূত্র: ${activeQuoteMeta.source || 'DAWAH X'}`, 100, 932);
-
-    ctx.fillStyle = isLight ? '#4f6963' : '#9ab4bc';
-    ctx.font = '400 25px "Hind Siliguri", sans-serif';
-    const refUrl = activeQuoteMeta.key
-      ? `ebrahim-ead.github.io/DAWAH-X/s/${activeQuoteMeta.key}.html`
-      : 'dawah-x.github.io/card';
-    ctx.fillText(refUrl, 100, 978);
-
-    quoteCanvas.toBlob((b) => {
-      activeQuoteMeta.blob = b;
-    }, 'image/png');
-  }
-
-  function openQuoteCardModal({ text, title, source, key }) {
-    closeOverlays();
-    activeQuoteMeta = { title: title.slice(0, 125), source, key, theme: activeQuoteMeta.theme || 'dark', blob: null };
-    if (quoteTextEl) quoteTextEl.value = text.slice(0, 320);
-    if (quoteCardModal) {
-      quoteCardModal.classList.add('open');
-      backdrop.classList.add('open');
-      drawQuoteCardCanvas();
-    }
-  }
-
-  quoteTextEl?.addEventListener('input', drawQuoteCardCanvas);
-  document.getElementById('quoteThemeDarkBtn')?.addEventListener('click', () => {
-    activeQuoteMeta.theme = 'dark';
-    drawQuoteCardCanvas();
-  });
-  document.getElementById('quoteThemeLightBtn')?.addEventListener('click', () => {
-    activeQuoteMeta.theme = 'light';
-    drawQuoteCardCanvas();
-  });
-  document.getElementById('downloadQuotePngBtn')?.addEventListener('click', () => {
-    if (!activeQuoteMeta.blob) return;
-    const url = URL.createObjectURL(activeQuoteMeta.blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `dawahx-fatwa-${activeQuoteMeta.key || 'card'}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 15000);
-  });
-  document.getElementById('shareQuotePngBtn')?.addEventListener('click', async () => {
-    if (!activeQuoteMeta.blob) return;
-    const file = new File([activeQuoteMeta.blob], 'dawahx-card.png', { type: 'image/png' });
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: 'DAWAH X — দলিলভিত্তিক উত্তর' });
-        return;
-      } catch (_) {}
-    }
-    document.getElementById('downloadQuotePngBtn')?.click();
-  });
-
-  // ===== v4.0 In-App YouTube Cinema Lightbox & Live Broadcast Poller =====
+  // In-App YouTube Cinema Lightbox & Live Broadcast Poller
   function openVideoModal(videoId, title) {
     if (!videoId || !videoModal || !videoModalIframe) return;
     closeOverlays();
@@ -1790,7 +1367,7 @@
     document.getElementById('videoExternalLink').href = `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}`;
     videoModalIframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}?autoplay=1&rel=0`;
     videoModal.classList.add('open');
-    backdrop.classList.add('open');
+    backdrop?.classList.add('open');
   }
 
   async function checkLiveBroadcast() {
@@ -1808,7 +1385,7 @@
     }
   }
 
-  // ===== v4.0 Theme Toggle, Font Size Cycler, Chat Export, Shortcuts & PWA =====
+  // Theme Toggle & Font Size Cycler
   const themeToggleBtn = document.getElementById('themeToggleBtn');
   function applyTheme(theme) {
     document.documentElement.setAttribute('data-theme', theme);
@@ -1823,7 +1400,6 @@
     applyTheme(cur);
   });
 
-  const fontSizeBtn = document.getElementById('fontSizeBtn');
   const FONT_MODES = ['normal', 'font-lg', 'font-xl'];
   function applyFontMode(mode) {
     document.body.classList.remove('font-lg', 'font-xl');
@@ -1838,32 +1414,7 @@
     applyFontMode(next);
   });
 
-  document.getElementById('exportChatBtn')?.addEventListener('click', () => {
-    if (!currentSessionTurns.length) return;
-    const lines = ['=== DAWAH X AI — কথোপকথন ও দলিলসমূহ ===\n'];
-    for (const t of currentSessionTurns) {
-      lines.push(`প্রশ্ন: ${t.question}`);
-      if (t.data.headline) lines.push(`শিরোনাম: ${t.data.headline}`);
-      lines.push(`উত্তর: ${t.data.direct_answer}`);
-      if (t.data.explanation_paragraphs?.length) lines.push(t.data.explanation_paragraphs.join('\n'));
-      if (t.data.primary_url) lines.push(`সূত্র: ${t.data.primary_url}`);
-      lines.push('\n----------------------------------------\n');
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `dawahx-ai-chat-${new Date().toISOString().slice(0, 10)}.txt`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
-  });
-
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
-      e.preventDefault();
-      openCmdPalette();
-      return;
-    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b' && window.innerWidth > 900) {
       e.preventDefault();
       toggleDesktopSidebar();
@@ -1872,21 +1423,13 @@
     if (e.key === 'Escape') {
       stopSpeech();
       closeOverlays();
-    } else if (
-      e.code === 'Space' &&
-      tasbihModal &&
-      tasbihModal.classList.contains('open') &&
-      !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)
-    ) {
-      e.preventDefault();
-      incrementTasbih();
     } else if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName)) {
       e.preventDefault();
       questionInput.focus();
     }
   });
 
-  // ===== v6.0 Laptop Collapsible Sidebar, Mobile Header New Chat, Scroll-to-Bottom, Swipe Gestures & Command Palette =====
+  // Collapsible Sidebar, Mobile Header New Chat, Scroll-to-Bottom & Touch Swipe Gestures
   const SIDEBAR_COLLAPSED_KEY = 'dawahx_sidebar_collapsed_v6';
   function toggleDesktopSidebar(forceVal) {
     if (!appShell) return;
@@ -1899,11 +1442,10 @@
   }
   document.getElementById('desktopSidebarToggleBtn')?.addEventListener('click', () => toggleDesktopSidebar());
   document.getElementById('mobileNewChatBtn')?.addEventListener('click', () => {
-    newChatBtn.click();
-    showToast('নতুন কথোপকথন শুরু হয়েছে');
+    newChatBtn?.click();
+    showToast('নতুন আলোচনা শুরু হয়েছে');
   });
 
-  // Floating Scroll-to-Bottom Pill
   chatScroll.addEventListener('scroll', () => {
     if (!scrollBottomBtn) return;
     const distFromBottom = chatScroll.scrollHeight - chatScroll.scrollTop - chatScroll.clientHeight;
@@ -1913,7 +1455,6 @@
     chatScroll.scrollTo({ top: chatScroll.scrollHeight, behavior: 'smooth' });
   });
 
-  // Smartphone Touch Swipe Gestures (Edge-swipe right opens sidebar, swipe left closes sidebar, swipe right closes reader)
   let touchStartX = 0;
   let touchStartY = 0;
   document.addEventListener(
@@ -1933,289 +1474,31 @@
       const dy = e.changedTouches[0].clientY - touchStartY;
       if (Math.abs(dx) < 62 || Math.abs(dy) > Math.abs(dx) * 0.65) return;
 
-      if (dx > 62 && touchStartX <= 26 && !sidebar.classList.contains('open') && !readerDrawer.classList.contains('open')) {
-        sidebar.classList.add('open');
-        backdrop.classList.add('open');
-      } else if (dx < -62 && sidebar.classList.contains('open')) {
+      if (dx > 62 && touchStartX <= 26 && !sidebar?.classList.contains('open') && !readerDrawer?.classList.contains('open')) {
+        sidebar?.classList.add('open');
+        backdrop?.classList.add('open');
+      } else if (dx < -62 && sidebar?.classList.contains('open')) {
         closeOverlays();
-      } else if (dx > 75 && readerDrawer.classList.contains('open')) {
+      } else if (dx > 75 && readerDrawer?.classList.contains('open')) {
         closeOverlays();
       }
     },
     { passive: true }
   );
 
-  // Command Palette (Ctrl+K / Mobile Bolt)
-  const CMD_BASE_ACTIONS = [
-    { label: '🕌 ২৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার', meta: 'টুল', run: () => openPrayerModal() },
-    { label: '⚖️ কুরআনিক ফারায়েয / মিরাস (উত্তরাধিকার) ক্যালকুলেটর', meta: 'টুল', run: () => openMirasModal() },
-    { label: '📿 ডিজিটাল তাসবীহ ও মাসনূন যিকির কাউন্টার', meta: 'টুল', run: () => openTasbihModal() },
-    { label: '＋ নতুন প্রশ্ন / কথোপকথন শুরু করুন', meta: 'অ্যাকশন', run: () => newChatBtn.click() },
-    { label: '☀️ দিন / রাত থিম পরিবর্তন করুন', meta: 'সেটিংস', run: () => themeToggleBtn?.click() },
-    { label: 'অ+ লেখার আকার বড় / ছোট করুন', meta: 'সেটিংস', run: () => fontSizeBtn?.click() },
-    { label: '🆕 সদ্য প্রকাশিত লেখা ও ভিডিও দেখুন', meta: 'লাইভ', run: () => submitQuestion('আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?') },
-    { label: '🧮 ৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?', meta: 'যাকাত', run: () => submitQuestion('৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?') },
-    { label: '🎯 একটা ইসলামিক কুইজ ধরো', meta: 'কুইজ', run: () => submitQuestion('একটা ইসলামিক কুইজ ধরো') },
-    { label: '📚 শুধু মাসিক আত-তাহরীক থেকে উত্তর ফিল্টার করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = 'at'; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: মাসিক আত-তাহরীক'); } } },
-    { label: '📚 শুধু মাসিক আল-ইতিছাম থেকে উত্তর ফিল্টার করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = 'ai'; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: মাসিক আল-ইতিছাম'); } } },
-    { label: '📚 সব উৎস পুনরায় চালু করুন', meta: 'ফিল্টার', run: () => { if (pubSourceSelect) { pubSourceSelect.value = ''; pubSourceSelect.dispatchEvent(new Event('change')); showToast('ফিল্টার: সব উৎস'); } } },
-  ];
-  let currentCmdList = [];
-
-  function renderCmdResults(queryText = '') {
-    const listEl = document.getElementById('cmdResultsList');
-    if (!listEl) return;
-    const q = String(queryText || '').trim().toLowerCase();
-    const dynamicItems = [];
-
-    // Include saved bookmarks
-    for (const bm of loadStoredJson(BOOKMARKS_KEY, []).slice(0, 6)) {
-      dynamicItems.push({
-        label: `🔖 ${bm.title}`,
-        meta: 'সংরক্ষিত',
-        run: () => openInlineReader(bm.key),
-      });
-    }
-    // Include instant AI suggestions if user typed >=2 chars
-    if (q.length >= 2 && window.DawahXBrowserAI && window.DawahXBrowserAI.suggest) {
-      for (const sg of window.DawahXBrowserAI.suggest(q, 5)) {
-        dynamicItems.push({
-          label: `🔍 ${sg}`,
-          meta: 'প্রশ্ন করুন',
-          run: () => submitQuestion(sg),
-        });
-      }
-    }
-
-    const pool = [...CMD_BASE_ACTIONS, ...dynamicItems];
-    currentCmdList = q
-      ? pool.filter((item) => item.label.toLowerCase().includes(q) || item.meta.toLowerCase().includes(q))
-      : pool;
-
-    if (q.length >= 2) {
-      currentCmdList.push({
-        label: `➤ সরাসরি জিজ্ঞেস করুন: “${queryText.trim()}”`,
-        meta: 'DAWAH X AI',
-        run: () => submitQuestion(queryText.trim()),
-      });
-    }
-
-    listEl.innerHTML = currentCmdList
-      .slice(0, 12)
-      .map(
-        (it, idx) => `
-        <button type="button" class="cmd-item" data-cmd-idx="${idx}">
-          <span>${escHtml(it.label)}</span>
-          <small>${escHtml(it.meta)}</small>
-        </button>`
-      )
-      .join('');
-  }
-
-  function openCmdPalette() {
-    closeOverlays();
-    if (!cmdModal) return;
-    const inp = document.getElementById('cmdSearchInput');
-    if (inp) inp.value = '';
-    renderCmdResults('');
-    cmdModal.classList.add('open');
-    backdrop.classList.add('open');
-    setTimeout(() => inp?.focus(), 40);
-  }
-
-  document.getElementById('cmdPaletteBtn')?.addEventListener('click', openCmdPalette);
-  document.getElementById('mobileCmdBtn')?.addEventListener('click', openCmdPalette);
-  document.getElementById('cmdSearchInput')?.addEventListener('input', (e) => renderCmdResults(e.target.value));
-  document.getElementById('cmdSearchInput')?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && currentCmdList.length > 0) {
-      e.preventDefault();
-      const action = currentCmdList[0];
-      closeOverlays();
-      action.run();
-    }
-  });
-  document.getElementById('cmdResultsList')?.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-cmd-idx]');
-    if (!btn) return;
-    const action = currentCmdList[Number(btn.getAttribute('data-cmd-idx'))];
-    closeOverlays();
-    if (action) action.run();
-  });
-
-  // ===== v5.0 Qur'anic Fara'id / Miras Calculator Modal =====
-  function renderMirasModalResults() {
-    if (!mirasModal || !window.DawahXBrowserAI || !window.DawahXBrowserAI.calculateMiras) return;
-    const gender = document.getElementById('mirasGender')?.value || 'male';
-    const wivesWrap = document.getElementById('mirasWivesWrap');
-    const husbandWrap = document.getElementById('mirasHusbandWrap');
-    if (wivesWrap) wivesWrap.style.display = gender === 'male' ? '' : 'none';
-    if (husbandWrap) husbandWrap.style.display = gender === 'female' ? '' : 'none';
-
-    const res = window.DawahXBrowserAI.calculateMiras({
-      deceasedGender: gender,
-      netEstate: Number(document.getElementById('mirasEstate')?.value || 0),
-      wives: Number(document.getElementById('mirasWives')?.value || 0),
-      husband: Number(document.getElementById('mirasHusband')?.value || 0) === 1,
-      father: Number(document.getElementById('mirasFather')?.value || 0) === 1,
-      mother: Number(document.getElementById('mirasMother')?.value || 0) === 1,
-      sons: Number(document.getElementById('mirasSons')?.value || 0),
-      daughters: Number(document.getElementById('mirasDaughters')?.value || 0),
-    });
-
-    const noteEl = document.getElementById('mirasCaseNote');
-    const listEl = document.getElementById('mirasResultsList');
-    if (noteEl) noteEl.innerHTML = formatRichText('📌 ' + res.case_note);
-    if (!listEl) return;
-
-    if (!res.heirs.length) {
-      listEl.innerHTML = `<div class="miras-row">অনুগ্রহ করে অন্তত একজন জীবিত ওয়ারিশ নির্বাচন করুন।</div>`;
-      return;
-    }
-
-    listEl.innerHTML = res.heirs
-      .map(
-        (h) => `
-        <div class="miras-row">
-          <div class="miras-row-top">
-            <span class="miras-row-title">${escHtml(h.label)}</span>
-            <span class="miras-row-val">${escHtml(h.percentage_bn)}${h.amount_bn ? ' · ' + escHtml(h.amount_bn) : ''}</span>
-          </div>
-          <div class="miras-bar-track">
-            <div class="miras-bar-fill" style="width:${Math.min(100, Math.max(2, h.percentage))}%;"></div>
-          </div>
-          <div class="miras-row-basis">
-            <span>📖 ${escHtml(h.basis)}</span>
-            ${h.per_person_bn ? `<strong style="color:var(--emerald);">${escHtml(h.per_person_bn)}</strong>` : ''}
-          </div>
-        </div>`
-      )
-      .join('');
-  }
-
-  function openMirasModal() {
-    closeOverlays();
-    if (!mirasModal) return;
-    renderMirasModalResults();
-    mirasModal.classList.add('open');
-    backdrop.classList.add('open');
-  }
-
-  document.getElementById('openMirasBtn')?.addEventListener('click', openMirasModal);
-  ['mirasGender', 'mirasEstate', 'mirasWives', 'mirasHusband', 'mirasFather', 'mirasMother', 'mirasSons', 'mirasDaughters'].forEach((id) => {
-    const el = document.getElementById(id);
-    el?.addEventListener('input', renderMirasModalResults);
-    el?.addEventListener('change', renderMirasModalResults);
-  });
-
-  // ===== v5.0 Digital Tasbih & Sunnah Adhkar Counter =====
-  const TASBIH_PRESETS = [
-    { ar: 'سُبْحَانَ اللَّهِ', bn: 'সুবহানাল্লাহ — আল্লাহ পবিত্র ও মহিমাময়', target: 33 },
-    { ar: 'الْحَمْدُ لِلَّهِ', bn: 'আলহামদুলিল্লাহ — সকল প্রশংসা আল্লাহর জন্য', target: 33 },
-    { ar: 'اللَّهُ أَكْبَرُ', bn: 'আল্লাহু আকবার — আল্লাহ সর্বশ্রেষ্ঠ', target: 34 },
-    { ar: 'أَسْتَغْفِرُ اللَّهَ', bn: 'আস্তাগফিরুল্লাহ — আমি আল্লাহর কাছে ক্ষমা চাইছি', target: 100 },
-    { ar: 'سُبْحَانَ اللَّهِ وَبِحَمْدِهِ', bn: 'সুবহানাল্লাহি ওয়া বিহামদিহি (সহীহ বুখারী ৬৪০৫)', target: 100 },
-    { ar: 'لَا إِلَٰهَ إِلَّا اللَّهُ وَحْدَهُ لَا شَرِيكَ لَهُ', bn: 'লা ইলাহা ইল্লাল্লাহু ওয়াহদাহু লা শারীকা লাহু...', target: 100 },
-    { ar: 'اللَّهُمَّ صَلِّ وَسَلِّمْ عَلَى نَبِيِّنَا مُحَمَّدٍ', bn: 'দরূদ শরীফ — নবীজি ﷺ-এর ওপর সালাত ও সালাম', target: 10 },
-  ];
-  const TASBIH_STORAGE_KEY = 'dawahx_tasbih_daily_v5';
-  let tasbihIdx = 0;
-  let tasbihCount = 0;
-
-  function getTasbihDailyRecord() {
-    const today = new Date().toISOString().slice(0, 10);
-    const saved = loadStoredJson(TASBIH_STORAGE_KEY, { date: today, total: 0 });
-    return saved.date === today ? saved : { date: today, total: 0 };
-  }
-
-  function renderTasbihState() {
-    const presetSelect = document.getElementById('tasbihPresetSelect');
-    if (presetSelect && !presetSelect.options.length) {
-      presetSelect.innerHTML = TASBIH_PRESETS.map(
-        (p, idx) => `<option value="${idx}">${escHtml(p.bn.split('—')[0].trim())} (${toBnNum(p.target)} বার)</option>`
-      ).join('');
-    }
-    if (presetSelect) presetSelect.value = String(tasbihIdx);
-
-    const p = TASBIH_PRESETS[tasbihIdx] || TASBIH_PRESETS[0];
-    const arEl = document.getElementById('tasbihArabic');
-    const mnEl = document.getElementById('tasbihMeaning');
-    const numEl = document.getElementById('tasbihCountNum');
-    const tgtEl = document.getElementById('tasbihTargetLbl');
-    const tapBtn = document.getElementById('tasbihTapBtn');
-    const dailyEl = document.getElementById('tasbihDailyTotal');
-
-    if (arEl) arEl.textContent = p.ar;
-    if (mnEl) mnEl.textContent = `${p.bn}`;
-    if (numEl) numEl.textContent = toBnNum(tasbihCount);
-    if (tgtEl) tgtEl.textContent = tasbihCount >= p.target ? `✓ মাশাআল্লাহ! লক্ষ্য (${toBnNum(p.target)}) পূর্ণ` : `লক্ষ্য: ${toBnNum(p.target)}`;
-    if (tapBtn) tapBtn.classList.toggle('completed', tasbihCount >= p.target);
-    if (dailyEl) dailyEl.textContent = `আজকের মোট যিকির: ${toBnNum(getTasbihDailyRecord().total)}`;
-  }
-
-  function incrementTasbih() {
-    const p = TASBIH_PRESETS[tasbihIdx] || TASBIH_PRESETS[0];
-    tasbihCount++;
-    const rec = getTasbihDailyRecord();
-    rec.total++;
-    saveStoredJson(TASBIH_STORAGE_KEY, rec);
-    if (navigator.vibrate) {
-      navigator.vibrate(tasbihCount === p.target ? [35, 50, 75] : 15);
-    }
-    renderTasbihState();
-  }
-
-  function openTasbihModal() {
-    closeOverlays();
-    if (!tasbihModal) return;
-    renderTasbihState();
-    tasbihModal.classList.add('open');
-    backdrop.classList.add('open');
-  }
-
-  document.getElementById('openTasbihBtn')?.addEventListener('click', openTasbihModal);
-  document.getElementById('hdrTasbihBtn')?.addEventListener('click', openTasbihModal);
-  document.getElementById('tasbihTapBtn')?.addEventListener('click', incrementTasbih);
-  document.getElementById('tasbihResetBtn')?.addEventListener('click', () => {
-    tasbihCount = 0;
-    renderTasbihState();
-  });
-  document.getElementById('tasbihNextDhikrBtn')?.addEventListener('click', () => {
-    tasbihIdx = (tasbihIdx + 1) % TASBIH_PRESETS.length;
-    tasbihCount = 0;
-    renderTasbihState();
-  });
-  document.getElementById('tasbihPresetSelect')?.addEventListener('change', (e) => {
-    tasbihIdx = Number(e.target.value) || 0;
-    tasbihCount = 0;
-    renderTasbihState();
-  });
-
-  // PWA Service Worker & Install Prompt
+  // PWA Service Worker
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-  const installPwaBtn = document.getElementById('installPwaBtn');
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredInstallPrompt = e;
-    if (installPwaBtn) installPwaBtn.style.display = 'flex';
-  });
-  installPwaBtn?.addEventListener('click', async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice.catch(() => {});
-    deferredInstallPrompt = null;
-    installPwaBtn.style.display = 'none';
-  });
 
   renderSidebarLists();
   updateLivePrayerBadge();
   setInterval(updateLivePrayerBadge, 45000);
   checkLiveBroadcast();
   setInterval(checkLiveBroadcast, 120000);
+
   const cfReadyPromise = detectCloudflareAI();
-  Promise.all([loadStats(), cfReadyPromise]).then(() => {
-    // Support shareable ?q=... deep query links!
+  Promise.all([initCorpusWarmup(), cfReadyPromise]).then(() => {
     const urlQ = new URLSearchParams(location.search).get('q');
     if (urlQ && urlQ.trim()) {
       submitQuestion(urlQ.trim());

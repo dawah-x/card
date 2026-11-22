@@ -1770,10 +1770,32 @@
         .replace(/<\/(?:p|div|li|h[1-6]|blockquote|tr|section|article)>|<br\s*\/?>/gi, '\n')
         .replace(/<[^>]+>/g, ' ')
     ).replace(/[ \t\r\f\v]+/g, ' ');
-    return text
+    const rawBlocks = text
       .split('\n')
       .map((l) => l.trim())
       .filter(Boolean);
+
+    // Split very long single-div fatwa blocks (> 620 chars) cleanly at sentence boundaries so answers never truncate halfway!
+    const expanded = [];
+    for (const blk of rawBlocks) {
+      if (blk.length <= 620) {
+        expanded.push(blk);
+        continue;
+      }
+      const sents = blk.split(/(?<=[।?!])\s+/u);
+      let chunk = '';
+      for (const s of sents) {
+        if (!s) continue;
+        if (chunk && chunk.length + s.length + 1 > 520) {
+          expanded.push(chunk.trim());
+          chunk = s;
+        } else {
+          chunk = chunk ? `${chunk} ${s}` : s;
+        }
+      }
+      if (chunk.trim()) expanded.push(chunk.trim());
+    }
+    return expanded;
   }
 
   function cleanTitleText(t) {
@@ -2015,8 +2037,9 @@
 
     const out = [];
     let total = 0;
+    const perParaCap = Math.max(950, Math.floor(maxChars * 0.6));
     for (const idx of chosen) {
-      const p = trimCleanly(paras[idx], 560);
+      const p = trimCleanly(paras[idx], perParaCap);
       if (total + p.length > maxChars && out.length) break;
       out.push(p);
       total += p.length;
@@ -2737,8 +2760,8 @@
       const expSet = new Set();
       conceptGroups.forEach((g) => g.terms.forEach((t) => expSet.add(t)));
 
-      const selectedParas = selectBestParagraphs(proseDoc, coreSet, expSet, 5, 1650);
-      let directAnswer = selectedParas[0] || trimCleanly(proseDoc.opening_ruling, 500);
+      const selectedParas = selectBestParagraphs(proseDoc, coreSet, expSet, 7, 2800);
+      let directAnswer = selectedParas[0] || trimCleanly(proseDoc.opening_ruling, 650);
       let expStartIdx = 1;
       while (
         expStartIdx < selectedParas.length &&
@@ -2747,8 +2770,8 @@
         directAnswer = `${directAnswer} ${selectedParas[expStartIdx]}`.trim();
         expStartIdx++;
       }
-      directAnswer = trimCleanly(directAnswer, 580);
-      const explanationParas = selectedParas.slice(expStartIdx, expStartIdx + 3);
+      directAnswer = trimCleanly(directAnswer, 720);
+      const explanationParas = selectedParas.slice(expStartIdx, expStartIdx + 5);
 
       const additionalPerspectives = [];
       for (const sec of reranked.slice(1, 4)) {
