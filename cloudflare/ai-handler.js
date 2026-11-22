@@ -92,10 +92,10 @@ async function computeEdgeCacheRequest(mode, question, headline, primaryCite) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    const rawKey = `v15-dawahx-only|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
+    const rawKey = `v16-dawahx-only|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return new Request(`https://cache.dawahx.internal/ai-v15/${hex}`, { method: 'GET' });
+    return new Request(`https://cache.dawahx.internal/ai-v16/${hex}`, { method: 'GET' });
   } catch (_) {
     return null;
   }
@@ -127,8 +127,8 @@ function createSingleAnswerSSE(text, modelUsed, cacheStatus = 'MISS') {
 function buildMessages({ question, mode, history, ragContext, evidences, headline, primaryVerdict, partialAnswer }) {
   const cleanQ = String(question || '').trim().slice(0, 1400);
   const safeHistory = Array.isArray(history) ? history.slice(-8) : [];
-  const safeRag = Array.isArray(ragContext) ? ragContext.slice(0, 3) : [];
-  const safeEvidences = Array.isArray(evidences) ? evidences.slice(0, 3) : [];
+  const safeRag = Array.isArray(ragContext) ? ragContext.slice(0, 4) : [];
+  const safeEvidences = Array.isArray(evidences) ? evidences.slice(0, 4) : [];
   const cleanHeadline = String(headline || '').trim().slice(0, 260);
   const cleanVerdict = String(primaryVerdict || '').trim().slice(0, 900);
   const cleanPartial = String(partialAnswer || '').trim().slice(-1400);
@@ -190,7 +190,7 @@ function buildMessages({ question, mode, history, ragContext, evidences, headlin
         const cite = String(
           c.citation || `[${idx + 1}] ${c.title || ''} (${c.source || 'DAWAH X'})`
         ).slice(0, 240);
-        const charBudget = idx === 0 ? 2200 : 850;
+        const charBudget = idx === 0 ? 2400 : 1200;
         const body = String(c.content || c.excerpt || '').slice(0, charBudget);
         return `${cite}\n${body}`;
       })

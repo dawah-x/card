@@ -81,7 +81,7 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v15_only';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v16_only';
   const CITY_KEY = 'dawahx_user_city_v4';
   const ASR_METHOD_KEY = 'dawahx_asr_method';
   const THEME_KEY = 'dawahx_theme_v4';
@@ -886,8 +886,8 @@
         headline: data.headline || '',
         primary_verdict: hasRag ? data.direct_answer || '' : '',
         history: (historySnapshot || chatHistory.slice(0, -2)).slice(-6),
-        rag_context: hasRag ? data.rag_context.slice(0, 3) : [],
-        evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 3) : [],
+        rag_context: hasRag ? data.rag_context.slice(0, 4) : [],
+        evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 4) : [],
       };
 
       let activeAiUrl = aiUrl;
@@ -1580,6 +1580,14 @@
       },
       { enableHighAccuracy: false, timeout: 7000, maximumAge: 600000 }
     );
+  });
+
+  window.addEventListener('dawahx:city-changed', (e) => {
+    const cid = e?.detail?.cityId;
+    if (cid) {
+      selectedCityId = cid;
+      updateLivePrayerBadge();
+    }
   });
 
   // In-App YouTube Cinema Lightbox & Live Broadcast Poller

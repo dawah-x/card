@@ -168,9 +168,16 @@
     const groups = [];
     for (const tok of use) {
       const alts = new Set([tok]);
-      // Strip basic Bengali genitive/locative suffix for root matching
+      // Strip basic Bengali genitive/locative & spoken verbal suffixes for root matching
       if (tok.length >= 5 && tok.endsWith('ের')) alts.add(tok.slice(0, -2));
       if (tok.length >= 5 && (tok.endsWith('তে') || tok.endsWith('কে'))) alts.add(tok.slice(0, -2));
+      for (const vsuf of ['বেন', 'বো', 'বে', 'বা', 'তে', 'লে']) {
+        if (tok.length >= vsuf.length + 2 && tok.endsWith(vsuf)) {
+          const vr = tok.slice(0, -vsuf.length);
+          alts.add(vr + 'া');
+          alts.add(vr + 'তে');
+        }
+      }
       for (const grp of SYNONYMS) {
         for (const m of grp) {
           if (tok.startsWith(m)) {
