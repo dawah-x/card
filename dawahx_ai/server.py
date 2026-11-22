@@ -18,7 +18,6 @@ from .synthesizer import synthesize_response
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 CACHE_DIR = ROOT_DIR / ".cache"
-STATIC_DIR = ROOT_DIR / "static"
 
 ai_model = DawahXAIModel(CACHE_DIR)
 
@@ -135,37 +134,48 @@ def api_sync(req: Optional[SyncRequest] = None) -> Dict[str, Any]:
     }
 
 
+@app.get("/styles.css")
+def serve_styles_css():
+    return FileResponse(str(ROOT_DIR / "styles.css"), media_type="text/css; charset=utf-8")
+
+
+@app.get("/browser-ai.js")
+def serve_browser_ai_js():
+    return FileResponse(str(ROOT_DIR / "browser-ai.js"), media_type="application/javascript; charset=utf-8")
+
+
+@app.get("/app.js")
+def serve_app_js():
+    return FileResponse(str(ROOT_DIR / "app.js"), media_type="application/javascript; charset=utf-8")
+
+
 @app.get("/dawahx-ai-widget.js")
 def serve_widget_js():
-    widget_path = STATIC_DIR / "dawahx-ai-widget.js"
-    if not widget_path.exists():
-        raise HTTPException(status_code=404, detail="Widget file not found")
     return FileResponse(
-        str(widget_path),
+        str(ROOT_DIR / "dawahx-ai-widget.js"),
         media_type="application/javascript; charset=utf-8",
         headers={"Cache-Control": "no-cache"},
     )
 
 
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-app.mount("/fonts", StaticFiles(directory=str(STATIC_DIR / "fonts")), name="fonts")
+app.mount("/fonts", StaticFiles(directory=str(ROOT_DIR / "fonts")), name="fonts")
 
 
 @app.get("/favicon.svg")
 def serve_favicon():
-    return FileResponse(str(STATIC_DIR / "favicon.svg"), media_type="image/svg+xml")
+    return FileResponse(str(ROOT_DIR / "favicon.svg"), media_type="image/svg+xml")
 
 
 @app.get("/logo.webp")
 def serve_logo():
-    return FileResponse(str(STATIC_DIR / "logo.webp"), media_type="image/webp")
+    return FileResponse(str(ROOT_DIR / "logo.webp"), media_type="image/webp")
 
 
 @app.get("/logo-icon.webp")
 def serve_logo_icon():
-    return FileResponse(str(STATIC_DIR / "logo-icon.webp"), media_type="image/webp")
+    return FileResponse(str(ROOT_DIR / "logo-icon.webp"), media_type="image/webp")
 
 
 @app.get("/")
 def serve_index():
-    return FileResponse(str(STATIC_DIR / "index.html"), media_type="text/html; charset=utf-8")
+    return FileResponse(str(ROOT_DIR / "index.html"), media_type="text/html; charset=utf-8")

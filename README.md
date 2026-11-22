@@ -22,13 +22,20 @@
 
 ---
 
-## কীভাবে চালাবেন (Quick Start)
+## কীভাবে চালাবেন (GitHub Pages ও Local)
+
+### ১. GitHub Pages-এ সরাসরি (কোনো সার্ভার ছাড়াই)
+রিপোজিটরির রুটে থাকা `index.html`, `.nojekyll`, `styles.css`, `browser-ai.js` ও `app.js` সরাসরি **GitHub Pages** (`https://dawah-x.github.io/card/`)-এ চলে এবং ব্রাউজার থেকেই সরাসরি `https://ebrahim-ead.github.io/DAWAH-X/`-এর স্ট্যাটিক ইনডেক্স ও লেখা পড়ে উত্তর দেয়।
+
+### ২. লোকাল কম্পিউটারে বা Python সার্ভারে
 
 ```bash
+# স্ট্যাটিক মোডে চালাতে:
+python3 -m http.server 8000
+
+# অথবা পূর্ণ Python FastAPI + Neural Reranker মোডে চালাতে:
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
-
-# প্রথমবার চালালে স্বয়ংক্রিয়ভাবে Ebrahim-ead/DAWAH-X সিঙ্ক করে মডেল ট্রেইন করবে:
 .venv/bin/python run.py
 ```
 
