@@ -52,6 +52,17 @@
         </a>
       </div>
 
+      <!-- Saved Sessions & Bookmarks (auto-shown when populated) -->
+      <div id="sessionsBlock" style="display:none;">
+        <div class="side-section-label">সাম্প্রতিক কথোপকথন</div>
+        <div class="session-list" id="sessionList"></div>
+      </div>
+
+      <div id="bookmarksBlock" style="display:none;">
+        <div class="side-section-label">🔖 সংরক্ষিত উত্তর</div>
+        <div class="session-list" id="bookmarkList"></div>
+      </div>
+
       <!-- Source Filter -->
       <div>
         <div class="side-section-label">উৎস ফিল্টার</div>
@@ -104,11 +115,14 @@
         <div class="header-left">
           <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
           <div class="model-badge-bar">
-            <strong>DAWAH X AI v2.0</strong>
-            <span class="strict-tag">✓ স্বাভাবিক কথোপকথন + শতভাগ DAWAH-X দলিলনির্ভর</span>
+            <strong>DAWAH X AI v3.0</strong>
+            <span class="strict-tag">✓ স্মার্ট কথোপকথন · শতভাগ DAWAH-X দলিলনির্ভর</span>
           </div>
         </div>
         <div class="header-actions">
+          <button type="button" class="prayer-pill-btn" id="livePrayerBtn" data-q="আজকের নামাজের সময়সূচি দাও" title="আজকের নামাজ, সেহরি ও ইফতারের পূর্ণ সময়সূচি দেখুন">
+            🕌 নামাজের সময়
+          </button>
           <a href="https://ebrahim-ead.github.io/DAWAH-X/fatwa.html" target="_blank" rel="noopener noreferrer" class="hdr-link">ফতোয়া সূচি ↗</a>
           <a href="https://ebrahim-ead.github.io/DAWAH-X/ask.html" target="_blank" rel="noopener noreferrer" class="hdr-link">প্রশ্ন পাঠান ↗</a>
         </div>
@@ -124,8 +138,16 @@
             </div>
             <h2>স্বাভাবিক আলাপ করুন। <span>দলিলসহ সত্য জানুন।</span></h2>
             <p class="welcome-lead">
-              আমার সাথে বাংলা, Banglish বা ইংরেজিতে একদম বন্ধুভাবাপন্ন স্বাভাবিক কথাবার্তা বলুন — আর যেকোনো ইসলামিক মাসআলা, ফতোয়া বা প্রশ্ন করলে আমি শুধুমাত্র <b>DAWAH X</b> ওয়েবসাইটের যাচাইকৃত লেখা ও ভিডিও থেকে দলিলসহ উত্তর দেব।
+              বাংলা, Banglish বা ইংরেজিতে একদম বন্ধুভাবাপন্ন স্বাভাবিক কথাবার্তা বলুন, নামাজ ও যাকাতের হিসাব জানুন, ইসলামিক কুইজ খেলুন — আর যেকোনো মাসআলা বা ফতোয়া জানতে চাইলে আমি শুধুমাত্র <b>DAWAH X</b>-এর যাচাইকৃত লেখা ও ভিডিও থেকে দলিলসহ উত্তর দেব।
             </p>
+
+            <div class="quick-tools-row">
+              <button type="button" class="quick-tool-pill" data-q="আসসালামু আলাইকুম! কেমন আছো তুমি?">💬 স্বাভাবিক আড্ডা</button>
+              <button type="button" class="quick-tool-pill" data-q="আজকের নামাজের সময়সূচি দাও">🕌 নামাজ ও ইফতারের সময়</button>
+              <button type="button" class="quick-tool-pill" data-q="৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?">🧮 যাকাত ক্যালকুলেটর</button>
+              <button type="button" class="quick-tool-pill" data-q="একটা ইসলামিক কুইজ ধরো">🎯 ইসলামিক কুইজ</button>
+              <button type="button" class="quick-tool-pill" data-q="আয়াতুল কুরসী অর্থসহ বলো">🤲 আয়াতুল কুরসী</button>
+            </div>
 
             <div class="starter-grid">
               <button class="starter-card" data-q="আসসালামু আলাইকুম! কেমন আছো তুমি?">

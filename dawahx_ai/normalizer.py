@@ -408,6 +408,55 @@ BANGLISH_AND_EN_MAP: Dict[str, str] = {
     "rokto": "রক্ত ওযু",
     "ghush": "ঘুষ দুর্নীতি হারাম",
     "bribe": "ঘুষ দুর্নীতি",
+    "gusul": "গোসল ফরয",
+    "farz": "ফরয আবশ্যক",
+    "foroj": "ফরয আবশ্যক",
+    "karon": "কারণ ভঙ্গ",
+    "kaza": "কাযা ক্বাযা ছালাত",
+    "qaza": "কাযা ক্বাযা ছালাত",
+    "mon": "মন মনোযোগ খুশু",
+    "taka": "টাকা অর্থ সম্পদ",
+    "takar": "টাকা অর্থ সম্পদ",
+    "bkash": "বিকাশ ক্যাশব্যাক মোবাইল ব্যাংকিং",
+    "nagad": "নগদ বিকাশ ক্যাশব্যাক",
+    "cashback": "ক্যাশব্যাক ডিসকাউন্ট মূল্য ফেরত",
+    "bitcoin": "বিটকয়েন ক্রিপ্টোকারেন্সি মুদ্রা",
+    "crypto": "ক্রিপ্টোকারেন্সি বিটকয়েন",
+    "period": "হায়েয পিরিয়ড ঋতুস্রাব",
+    "hayez": "হায়েয পিরিয়ড ঋতুস্রাব",
+    "swapnodosh": "স্বপ্নদোষ বীর্য গোসল ছিয়াম",
+    "masturbation": "হস্তমৈথুন বীর্য গুনাহ",
+    "hostomoithun": "হস্তমৈথুন গুনাহ",
+    "kobor": "কবর আযাব যিয়ারত",
+    "azab": "আযাব শাস্তি",
+    "ajab": "আযাব শাস্তি",
+    "milad": "মীলাদ বিদআত কিয়াম",
+    "shobe": "শবে বরাত শাবান",
+    "borat": "শবে বরাত শাবান",
+    "kahf": "কাহফ সূরা",
+    "kursi": "আয়াতুল কুরসী",
+    "takhnu": "টাখনু গিরা প্যান্ট",
+    "pant": "প্যান্ট টাখনু পোশাক",
+    "chobi": "ছবি মূর্তি ভিডিও",
+    "sigaret": "সিগারেট ধূমপান",
+}
+
+BANGLISH_STOP_WORDS: Set[str] = {
+    "a", "e", "te", "er", "r", "ke", "re", "ta", "ti", "gulo", "gula", "ra", "der",
+    "ki", "kii", "keno", "kn", "kno", "kokhon", "kkhn", "kivabe", "kibhabe", "kemne", "kemon", "kmn",
+    "koto", "koy", "koyta", "kon", "konta", "kothay", "keu", "karo", "kake",
+    "hoy", "hoi", "hobe", "hole", "hoile", "howa", "howar", "hocche", "hoise", "hoyeche", "holo",
+    "jay", "jai", "jabe", "gele", "jawa", "pare", "parbo", "parbe", "pari", "para",
+    "kora", "korar", "kore", "korle", "korbo", "korben", "korte", "koren", "kori",
+    "dewa", "dewar", "dite", "dile", "debo", "newa", "newar", "nite", "nile", "nei", "nai",
+    "bola", "bolen", "bolo", "bolun", "ache", "ase", "thake", "thakle",
+    "pora", "porar", "pore", "porle", "porbo", "porte", "khawa", "khele", "khete",
+    "bose", "boshe", "utha", "uthte", "rakha", "rakhle",
+    "na", "noy", "naki", "ba", "othoba", "ebong", "ar", "kintu", "tobe", "jodi", "tahole",
+    "jonno", "jonyo", "theke", "sathe", "songe", "moddhe", "upor", "upore", "niche",
+    "ami", "amar", "amader", "apni", "apnar", "tumi", "tomar", "se", "tar", "tader", "amra",
+    "ekta", "ekti", "kichu", "sob", "shob", "onek", "khub", "beshi", "kom", "ektu",
+    "valo", "bhalo", "kharap", "uchit", "dorkar", "niyom", "bidhan", "hukum", "somporke", "bishoye",
 }
 
 # Generic Bengali & English stop/question words (should NOT carry primary topical weight alone)
@@ -456,24 +505,30 @@ IDENTITY_PATTERNS = re.compile(
 
 
 def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
-    """Expand Latin/Banglish/English tokens into Bengali Islamic domain terms."""
-    latin_words = re.findall(r"[a-zA-Z]{2,}", raw_query.lower())
-    if not latin_words:
-        return raw_query, []
-
+    """Replace known Latin/Banglish/English tokens with Bengali Islamic terms and strip Banglish function words."""
     mapped_phrases: List[str] = []
-    for w in latin_words:
+
+    def _repl(match: re.Match[str]) -> str:
+        raw_w = match.group(0)
+        w = raw_w.lower()
         if w in BANGLISH_AND_EN_MAP:
             mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
-        elif w.endswith("s") and w[:-1] in BANGLISH_AND_EN_MAP:
+            return f" {BANGLISH_AND_EN_MAP[w]} "
+        if len(w) >= 5 and w.endswith("er") and w[:-2] in BANGLISH_AND_EN_MAP:
+            mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-2]])
+            return f" {BANGLISH_AND_EN_MAP[w[:-2]]} "
+        if len(w) >= 4 and w.endswith("s") and w[:-1] in BANGLISH_AND_EN_MAP:
             mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-1]])
-        elif w.endswith("ing") and w[:-3] in BANGLISH_AND_EN_MAP:
+            return f" {BANGLISH_AND_EN_MAP[w[:-1]]} "
+        if len(w) >= 5 and w.endswith("ing") and w[:-3] in BANGLISH_AND_EN_MAP:
             mapped_phrases.append(BANGLISH_AND_EN_MAP[w[:-3]])
+            return f" {BANGLISH_AND_EN_MAP[w[:-3]]} "
+        if len(w) == 1 or w in BANGLISH_STOP_WORDS:
+            return " "
+        return raw_w
 
-    if mapped_phrases:
-        combined = raw_query + " " + " ".join(mapped_phrases)
-        return combined, mapped_phrases
-    return raw_query, []
+    converted = re.sub(r"[a-zA-Z]+", _repl, raw_query)
+    return converted, mapped_phrases
 
 
 def tokenize_folded(text: str, stem: bool = True) -> List[str]:

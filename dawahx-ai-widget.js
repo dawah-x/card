@@ -442,10 +442,24 @@
           body: JSON.stringify({ question: q, top_k: 4, history: widgetHistory.slice(-8) }),
         });
         resData = await r.json();
-      } else if (window.DawahXBrowserAI) {
-        resData = await window.DawahXBrowserAI.ask(q, 'all', 4, widgetHistory.slice(-8));
       } else {
-        resData = await StaticEngine.ask(q);
+        if (!window.DawahXBrowserAI && scriptEl && scriptEl.src) {
+          try {
+            const engineUrl = new URL('browser-ai.js', scriptEl.src).href;
+            await new Promise((resolve) => {
+              const s = document.createElement('script');
+              s.src = engineUrl;
+              s.onload = resolve;
+              s.onerror = resolve;
+              document.head.appendChild(s);
+            });
+          } catch (_) {}
+        }
+        if (window.DawahXBrowserAI) {
+          resData = await window.DawahXBrowserAI.ask(q, 'all', 4, widgetHistory.slice(-8));
+        } else {
+          resData = await StaticEngine.ask(q);
+        }
       }
 
       widgetHistory.push({ role: 'user', text: q });
@@ -453,6 +467,7 @@
         role: 'assistant',
         text: resData.direct_answer || '',
         primary_title: resData.headline || '',
+        quiz_id: typeof resData.quiz_id === 'number' ? resData.quiz_id : undefined,
         extra_body: resData.extra_body || '',
         evidences: resData.evidences || [],
         sources: resData.sources || [],

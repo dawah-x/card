@@ -107,6 +107,28 @@ class TestDawahXAI(unittest.TestCase):
         self.assertIsNotNone(elab)
         self.assertGreaterEqual(len(elab["explanation_paragraphs"]), 1)
 
+    def test_v3_everyday_banglish_and_utilities(self) -> None:
+        # Everyday Banglish retrieval (clean token replacement without unmapped Latin noise)
+        q_bg = "namaj e mon bose na ki korbo?"
+        ret = self.model.retrieve(q_bg, top_k=5)
+        ans = synthesize_response(q_bg, ret, self.model.summary)
+        self.assertEqual(ans["status"], "answered")
+
+        # Zakat calculator & district prayer schedule
+        summary = {"total_documents": 24207, "total_videos": 9310}
+        z_res = handle_dialogue_turn("৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?", summary)
+        self.assertIsNotNone(z_res)
+        self.assertIn("১২,৫০০", z_res["direct_answer"])
+
+        p_res = handle_dialogue_turn("চট্টগ্রামে ইফতার কয়টায়?", summary)
+        self.assertIsNotNone(p_res)
+        self.assertIn("চট্টগ্রাম", p_res["direct_answer"])
+
+        # English OOD query stays strictly not_found
+        ood_en = self.model.retrieve("python deep learning gpu cluster setup code", top_k=5)
+        ans_en = synthesize_response("python deep learning gpu cluster setup code", ood_en, self.model.summary)
+        self.assertEqual(ans_en["status"], "not_found")
+
 
 if __name__ == "__main__":
     unittest.main()
