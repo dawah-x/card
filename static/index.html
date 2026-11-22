@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DAWAH X AI — ইসলামিক প্রশ্নোত্তর এআই মডেল</title>
+  <meta name="description" content="DAWAH X ওয়েবসাইটের ২৪,২০৭+ ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধ এবং ৯,৩১০+ ভিডিও থেকে দলিলভিত্তিক ইসলামিক উত্তর প্রদানকারী এআই মডেল।" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Left Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="brand-box">
+        <a href="https://ebrahim-ead.github.io/DAWAH-X/" target="_blank" rel="noopener noreferrer" class="brand-link">
+          <img src="/logo-icon.webp" alt="DAWAH X" class="brand-logo" />
+          <div class="brand-meta">
+            <h1>DAWAH X <span class="ai-pill">AI</span></h1>
+            <small>কুরআন ও সুন্নাহভিত্তিক এআই</small>
+          </div>
+        </a>
+        <button class="close-sidebar-btn" id="closeSidebarBtn" aria-label="মেনু বন্ধ করুন">✕</button>
+      </div>
+
+      <button class="new-chat-btn" id="newChatBtn">
+        <span>＋</span> নতুন প্রশ্ন / আলোচনা
+      </button>
+
+      <!-- Live Corpus Counter -->
+      <div class="corpus-stat-card">
+        <div class="stat-card-head">
+          <span>DAWAH X জ্ঞানভাণ্ডার</span>
+          <span class="live-dot" id="statusIndicator">সক্রিয়</span>
+        </div>
+        <div class="stat-grid">
+          <div class="stat-cell">
+            <b id="statDocs">২৪,২০৭</b>
+            <span>মোট লেখা</span>
+          </div>
+          <div class="stat-cell">
+            <b id="statFatwas">১৫,৮৭৮</b>
+            <span>ফতোয়া</span>
+          </div>
+          <div class="stat-cell">
+            <b id="statVideos">৯,৩১০</b>
+            <span>ভিডিও</span>
+          </div>
+        </div>
+        <a href="https://ebrahim-ead.github.io/DAWAH-X/" target="_blank" rel="noopener noreferrer" class="site-ext-link">
+          মূল ওয়েবসাইট দেখুন: DAWAH-X ↗
+        </a>
+      </div>
+
+      <!-- Source Filter -->
+      <div>
+        <div class="side-section-label">উৎস ফিল্টার</div>
+        <div class="filter-list" id="filterList">
+          <button class="filter-btn active" data-filter="all">
+            <span>সব উৎস থেকে উত্তর</span>
+            <small>সম্পূর্ণ</small>
+          </button>
+          <button class="filter-btn" data-filter="fatwa">
+            <span>ফতোয়া ও মাসআলা</span>
+            <small>আত-তাহরীক · আল-ইতিছাম · আল-ইখলাছ</small>
+          </button>
+          <button class="filter-btn" data-filter="dawah">
+            <span>সংশয় নিরসন ও দাওয়াহ</span>
+            <small>From Muslims · Anti-Islam · IZ</small>
+          </button>
+          <button class="filter-btn" data-filter="article">
+            <span>প্রবন্ধ ও গবেষণা</span>
+            <small>বিস্তারিত প্রবন্ধ</small>
+          </button>
+        </div>
+      </div>
+
+      <!-- Curated Topics -->
+      <div>
+        <div class="side-section-label">বিষয়ভিত্তিক জিজ্ঞাসা</div>
+        <div class="topic-list" id="topicList">
+          <button class="topic-chip-btn" data-q="আল্লাহর অস্তিত্বের যৌক্তিক ও বৈজ্ঞানিক প্রমাণ কী?">আল্লাহর অস্তিত্ব ও নাস্তিকতা</button>
+          <button class="topic-chip-btn" data-q="পৃথিবীতে দুঃখ-কষ্ট কেন এবং যাদের কাছে দাওয়াত পৌঁছায়নি তাদের বিচার কীভাবে হবে?">তাকদীর, দুঃখ-কষ্ট ও পরকাল</button>
+          <button class="topic-chip-btn" data-q="কুরআন কীভাবে অবিকৃতভাবে সংরক্ষিত হয়েছে?">কুরআন সংরক্ষণ ও প্রামাণ্যতা</button>
+          <button class="topic-chip-btn" data-q="সহীহ হাদীস কেন মানতে হবে এবং কীভাবে সংরক্ষিত হয়েছে?">হাদীস ও সুন্নাহ</button>
+          <button class="topic-chip-btn" data-q="ইসলামে নারীর অধিকার, মর্যাদা ও পর্দার বিধান কী?">ইসলামে নারী ও পরিবার</button>
+          <button class="topic-chip-btn" data-q="ফরয ও নফল সালাত আদায়ের সহীহ নিয়ম ও মাসআলা কী?">সালাত, সিয়াম ও ইবাদত</button>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <button class="ghost-action-btn" id="openModelModalBtn">
+          ⚙ মডেল তথ্য ও ওয়েবসাইট উইজেট
+        </button>
+        <button class="ghost-action-btn" id="syncCorpusBtn">
+          ↻ DAWAH X থেকে লাইভ আপডেট সিঙ্ক
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Chat Workspace -->
+    <main class="main-pane">
+      <header class="top-header">
+        <div class="header-left">
+          <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
+          <div class="model-badge-bar">
+            <strong>DAWAH X AI v1.0</strong>
+            <span class="strict-tag">✓ শতভাগ DAWAH-X দলিলনির্ভর · মনগড়া ফতোয়ামুক্ত</span>
+          </div>
+        </div>
+        <div class="header-actions">
+          <a href="https://ebrahim-ead.github.io/DAWAH-X/fatwa.html" target="_blank" rel="noopener noreferrer" class="hdr-link">ফতোয়া সূচি ↗</a>
+          <a href="https://ebrahim-ead.github.io/DAWAH-X/ask.html" target="_blank" rel="noopener noreferrer" class="hdr-link">প্রশ্ন পাঠান ↗</a>
+        </div>
+      </header>
+
+      <div class="chat-scroll" id="chatScroll">
+        <div class="chat-container" id="chatContainer">
+          <!-- Welcome Hero (shown before messages or when reset) -->
+          <section class="welcome-hero" id="welcomeHero">
+            <div class="ayah-banner">
+              <span class="ayah-ar">ٱدْعُ إِلَىٰ سَبِيلِ رَبِّكَ بِٱلْحِكْمَةِ وَٱلْمَوْعِظَةِ ٱلْحَسَنَةِ</span>
+              <span class="ayah-bn">“তোমার রবের পথে আহ্বান করো প্রজ্ঞা ও উত্তম উপদেশের মাধ্যমে” — সূরা আন-নাহল ১৬:১২৫</span>
+            </div>
+            <h2>সত্য জানুন। <span>দলিলসহ উত্তর খুঁজুন।</span></h2>
+            <p class="welcome-lead">
+              যেকোনো ইসলামিক মাসআলা, ফতোয়া, আকীদা কিংবা সংশয়মূলক প্রশ্ন বাংলা, Banglish বা ইংরেজিতে লিখুন —
+              এই এআই মডেলটি শুধুমাত্র <b>DAWAH X</b> ওয়েবসাইটের যাচাইকৃত লেখা ও ভিডিও থেকে রেফারেন্সসহ উত্তর দেবে।
+            </p>
+
+            <div class="starter-grid">
+              <button class="starter-card" data-q="মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের জন্য ঘর করায় শারঈ কোনো বাধা আছে কি?">
+                <span class="starter-cat">ফতোয়া ও মসজিদ সংক্রান্ত মাসআলা</span>
+                <span class="starter-q">মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের জন্য ঘর করায় শারঈ কোনো বাধা আছে কি?</span>
+              </button>
+              <button class="starter-card" data-q="রোজা অবস্থায় ইনজেকশন বা স্যালাইন নিলে কি রোজা ভেঙে যাবে?">
+                <span class="starter-cat">সিয়াম ও চিকিৎসা মাসআলা</span>
+                <span class="starter-q">রোজা অবস্থায় ইনজেকশন বা স্যালাইন নিলে কি রোজা ভেঙে যাবে?</span>
+              </button>
+              <button class="starter-card" data-q="আল্লাহর অস্তিত্বের প্রমাণ কী? নাস্তিকদের সংশয়ের জবাব">
+                <span class="starter-cat">আকীদা ও নাস্তিকতা খণ্ডন</span>
+                <span class="starter-q">আল্লাহর অস্তিত্বের প্রমাণ কী? নাস্তিকদের সংশয়ের জবাব</span>
+              </button>
+              <button class="starter-card" data-q="যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, পরকালে তাদের বিচার কীভাবে হবে?">
+                <span class="starter-cat">আখিরাত ও ন্যায়বিচার</span>
+                <span class="starter-q">যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, পরকালে তাদের বিচার কীভাবে হবে?</span>
+              </button>
+              <button class="starter-card" data-q="namaz e sahu sijda kokhon ebong kivabe dite hoy?">
+                <span class="starter-cat">Banglish প্রশ্ন উদাহরণ</span>
+                <span class="starter-q">namaz e sahu sijda kokhon ebong kivabe dite hoy?</span>
+              </button>
+              <button class="starter-card" data-q="ইসলামে গান ও বাদ্যযন্ত্র শোনার বিধান কী? দলিলসহ বলুন">
+                <span class="starter-cat">হালাল-হারাম ও শরীআত</span>
+                <span class="starter-q">ইসলামে গান ও বাদ্যযন্ত্র শোনার বিধান কী? দলিলসহ বলুন</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <!-- Bottom Input Composer -->
+      <div class="composer-area">
+        <div class="composer-inner">
+          <form class="composer-box" id="askForm">
+            <textarea
+              id="questionInput"
+              rows="1"
+              placeholder="আপনার ইসলামিক প্রশ্নটি লিখুন (বাংলা, Banglish বা English)..."
+              aria-label="আপনার ইসলামিক প্রশ্ন"
+            ></textarea>
+            <button type="button" class="voice-btn" id="voiceBtn" title="কণ্ঠে প্রশ্ন বলুন (বাংলা)">
+              🎙
+            </button>
+            <button type="submit" class="send-btn" id="sendBtn">
+              <span>উত্তর খুঁজুন</span> ➤
+            </button>
+          </form>
+          <div class="composer-footnote">
+            উত্তরসমূহ শুধুমাত্র <a href="https://ebrahim-ead.github.io/DAWAH-X/" target="_blank" rel="noopener noreferrer">ebrahim-ead.github.io/DAWAH-X</a> সংগ্রহে থাকা লেখার আলোকে প্রদান করা হয়। জটিল ব্যক্তিগত মাসআলার জন্য বিজ্ঞ আলেমের পরামর্শ নিন।
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Shared Backdrop -->
+  <div class="backdrop" id="backdrop"></div>
+
+  <!-- Slide-Over Full Article Reader Drawer -->
+  <aside class="reader-drawer" id="readerDrawer" aria-hidden="true">
+    <div class="drawer-header">
+      <strong style="color: var(--gold-bright);">DAWAH X — সম্পূর্ণ মূল লেখা</strong>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <a href="#" id="drawerExternalUrl" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">DAWAH X সাইটে খুলুন ↗</a>
+        <button class="src-action-btn" id="closeDrawerBtn">✕ বন্ধ করুন</button>
+      </div>
+    </div>
+    <div class="drawer-body" id="drawerBody">
+      <h2 class="drawer-article-title" id="drawerTitle">লোড হচ্ছে...</h2>
+      <div class="drawer-article-meta" id="drawerMeta"></div>
+      <div class="drawer-html-content" id="drawerContent"></div>
+    </div>
+  </aside>
+
+  <!-- Model Diagnostics, API & Embed Code Modal -->
+  <div class="modal-dialog" id="modelModal" role="dialog" aria-modal="true">
+    <div class="drawer-header">
+      <strong style="color: var(--gold-bright);">DAWAH X AI — মডেল আর্কিটেকচার, এপিআই ও ওয়েবসাইট সংযুক্তি</strong>
+      <button class="src-action-btn" id="closeModalBtn">✕ বন্ধ করুন</button>
+    </div>
+    <div class="modal-body">
+      <div>
+        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 8px;">১. ট্রেইনকৃত এআই মডেলের পারফরম্যান্স ও তথ্য</h3>
+        <p style="font-size: 14px; color: var(--muted); margin-bottom: 10px;">
+          এই মডেলটি DAWAH X-এর সকল ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধের ওপর Multi-Field BM25F + 65K Bigram TF-IDF + 192-Dim TruncatedSVD Semantic Embeddings + Supervised MLP(48,24) Neural Reranker দিয়ে ট্রেইন করা হয়েছে।
+        </p>
+        <div class="metrics-cards" id="metricsCards"></div>
+      </div>
+
+      <div>
+        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">২. আপনার DAWAH-X (GitHub Pages) সাইটে সরাসরি যুক্ত করার কোড</h3>
+        <p style="font-size: 13.5px; color: var(--muted); margin-bottom: 8px;">
+          <code>static/dawahx-ai-widget.js</code> ফাইলটি আপনার <code>Ebrahim-ead/DAWAH-X</code> রিপোজিটরির রুটে কপি করে যেকোনো HTML পাতার <code>&lt;/body&gt;</code>-এর আগে নিচের ১ লাইন কোড বসালেই ভাসমান এআই চ্যাটবট চালু হয়ে যাবে (কোনো পেইড সার্ভার ছাড়াই সরাসরি GitHub Pages-এর <code>search/</code> ও <code>texts/</code> থেকে কাজ করে, আবার চাইলে Python API-এর সাথেও যুক্ত করা যায়!):
+        </p>
+        <pre class="code-snippet" id="embedSnippet">&lt;script src="dawahx-ai-widget.js" defer&gt;&lt;/script&gt;</pre>
+        <div style="margin-top: 8px; display: flex; gap: 8px;">
+          <button class="src-action-btn gold-link" id="copyEmbedBtn">কোড কপি করুন</button>
+          <a href="/dawahx-ai-widget.js" download="dawahx-ai-widget.js" class="src-action-btn">⬇ dawahx-ai-widget.js ডাউনলোড করুন</a>
+        </div>
+      </div>
+
+      <div>
+        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">৩. REST API ব্যবহারের নিয়ম</h3>
+        <pre class="code-snippet">POST /api/ask
+Content-Type: application/json
+
+{
+  "question": "রোজা অবস্থায় ইনজেকশন নিলে কি রোজা ভেঙে যায়?",
+  "source_filter": "all",
+  "top_k": 5
+}</pre>
+      </div>
+
+      <div>
+        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">৪. ঐচ্ছিক: জেনারেটিভ LLM ভাষা-সংস্করণ মোড (Browser RAG)</h3>
+        <p style="font-size: 13px; color: var(--muted); margin-bottom: 10px;">
+          ডিফল্টভাবে আমাদের নিজস্ব ট্রেইনকৃত DAWAH X AI মডেল কোনো API Key ছাড়াই সরাসরি কাজ করে। আপনি চাইলে ঐচ্ছিকভাবে ফ্রি Gemini বা Groq/OpenAI API Key দিয়ে উদ্ধারকৃত DAWAH X দলিলগুলোকে আরও সাবলীল কথোপকথনের ভাষায় সাজিয়ে নিতে পারেন (তখনও বাইরের কোনো তথ্য যোগ করা হবে না):
+        </p>
+        <div class="llm-config-grid">
+          <select id="llmProvider" class="input-field">
+            <option value="none">বন্ধ (শুধুমাত্র নিজস্ব DAWAH X AI মডেল)</option>
+            <option value="gemini">Google Gemini API (gemini-2.5-flash)</option>
+            <option value="groq">Groq API (llama-3.3-70b-versatile)</option>
+            <option value="openai">OpenAI Compatible API (gpt-4o-mini)</option>
+          </select>
+          <input type="password" id="llmApiKey" class="input-field" placeholder="API Key (শুধু আপনার ব্রাউজারে সেভ থাকবে)" />
+        </div>
+        <div style="margin-top: 8px;">
+          <button class="src-action-btn gold-link" id="saveLlmConfigBtn">সেটিংস সংরক্ষণ করুন</button>
+          <span id="llmSavedMsg" style="font-size: 12.5px; color: var(--emerald); margin-left: 8px;"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
