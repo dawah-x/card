@@ -275,9 +275,13 @@
       'ইসলাম', 'ইসলামে', 'ইসলামের', 'ইসলামিক', 'ইসলামী', 'মুসলিম', 'মুসলমান', 'শারঈ', 'শরীয়ত', 'শরীআত',
       'প্রশ্ন', 'উত্তর', 'জবাব', 'জানতে', 'চাই', 'বলুন', 'জানান', 'বিষয়ে', 'সম্পর্কে', 'ব্যাপারে',
       'বিধান', 'হুকুম', 'নিয়ম', 'মাসআলা', 'ফতোয়া', 'দলিল', 'দলিলসহ', 'আলোকে',
+      'আসসালামু', 'আলাইকুম', 'সালাম', 'রাহমাতুল্লাহ', 'রাহমাতুল্লাহি', 'বারাকাতুহু', 'ওয়া',
+      'ভাই', 'ভাইয়া', 'বোন', 'আপু', 'হুজুর', 'শায়খ', 'শায়েখ', 'স্যার', 'বন্ধু',
+      'দয়া', 'অনুগ্রহ', 'প্লিজ', 'একটু', 'আচ্ছা', 'হ্যালো', 'হাই',
       'what', 'why', 'how', 'when', 'where', 'who', 'which', 'is', 'are', 'do', 'does', 'can',
       'in', 'on', 'of', 'to', 'for', 'with', 'about', 'the', 'and', 'or', 'islam', 'islamic', 'muslim',
       'kivabe', 'kokhon', 'ebong', 'dite', 'hoy', 'dewar', 'niyom', 'ki',
+      'assalamu', 'alaikum', 'salam', 'bhai', 'bhaiya', 'hujur', 'sheikh', 'hello', 'hi', 'hey', 'please',
     ].map((w) => stemBn(foldBn(w)))
   );
 
@@ -298,22 +302,368 @@
     return mapped.length ? `${rawQuery} ${mapped.join(' ')}` : rawQuery;
   }
 
-  function detectConversationalIntent(q) {
-    const s = String(q || '').trim();
-    if (!s) return 'empty';
-    if (/^\s*(?:আসসালামু\s*আলাইকুম|সালাম|assalamu\s*alaikum|salam|hello|hi|হ্যালো|হাই)(?:\s+ওয়া\s*রাহমাতুল্লাহ(?:ি\s*ওয়া\s*বারাকাতুহু?)?)?[।!?.,\s]*$/i.test(s)) {
-      return 'greeting';
-    }
-    if (
-      s.length <= 75 &&
-      /(?:তুমি\s*কে|আপনি\s*কে|তোমার\s*নাম\s*ক[িী]|কে\s*তৈরি\s*করেছে|ক[িী]ভাবে\s*কাজ\s*করো?|who\s*are\s*you|how\s*do\s*you\s*work)/i.test(s)
-    ) {
-      const f = foldBn(s);
-      if (!f.includes('আল্লাহ') && !f.includes('রব') && !f.includes('নবি') && !f.includes('রাসুল')) {
-        return 'identity';
+  // =========================================================================
+  // Natural Everyday Bengali / Banglish / English Dialogue & Multi-Turn Engine
+  // =========================================================================
+  const DAWAHX_REMINDERS = [
+    {
+      arabic: 'أَلَا بِذِكْرِ اللَّهِ تَطْمَئِنُّ الْقُلُوبُ',
+      meaning: 'জেনে রেখো, আল্লাহর যিকিরেই অন্তরসমূহ প্রশান্ত হয়।',
+      ref: 'সূরা আর-রাদ ১৩:২৮',
+      reflection: 'জীবনের ব্যস্ততা বা অস্থিরতার মাঝে কয়েক মুহূর্ত নীরবে আল্লাহর স্মরণ ও ইস্তিগফার হৃদয়ে অদ্ভুত প্রশান্তি এনে দেয়।',
+    },
+    {
+      arabic: 'فَإِنَّ مَعَ الْعُسْرِ يُسْرًا ۝ إِنَّ مَعَ الْعُسْرِ يُسْرًا',
+      meaning: 'নিশ্চয়ই কষ্টের সাথেই স্বস্তি রয়েছে; নিশ্চয়ই কষ্টের সাথেই স্বস্তি রয়েছে।',
+      ref: 'সূরা আল-ইনশিরাহ ৯৪:৫-৬',
+      reflection: 'কোনো কঠিন সময়ই স্থায়ী নয়—ধৈর্য ও তাওয়াক্কুলের সাথে এগিয়ে গেলে আল্লাহ নিজেই পথ খুলে দেন।',
+    },
+    {
+      arabic: 'لَا يُكَلِّفُ اللَّهُ نَفْسًا إِلَّا وُسْعَهَا',
+      meaning: 'আল্লাহ কোনো ব্যক্তিকে তার সামর্থ্যের বাইরে দায়িত্ব চাপিয়ে দেন না।',
+      ref: 'সূরা আল-বাকারাহ ২:২৮৬',
+      reflection: 'আপনি এখন যে পরিস্থিতির মধ্য দিয়ে যাচ্ছেন, আল্লাহ জানেন তা অতিক্রম করার শক্তি আপনার আছে।',
+    },
+    {
+      arabic: 'الدِّينُ النَّصِيحَةُ',
+      meaning: 'দ্বীন হলো কল্যাণকামিতা ও আন্তরিক সদুপদেশ।',
+      ref: 'সহীহ মুসলিম ৫৫',
+      reflection: 'মানুষের সাথে সুন্দর আচরণ, হাসিমুখে কথা বলা এবং অন্যের কল্যাণ চাওয়াও ইবাদতের অংশ।',
+    },
+  ];
+
+  const CHAT_PATTERNS = {
+    salam: /^\s*(?:আসসালামু\s*আলাইকুম|আস-সালামু\s*আলাইকুম|সালামু?\s*আলাইকুম|সালাম|assalamu\s*alaikum|as-salamu\s*alaikum|salam|slm)(?:\s+ওয়া\s*রাহমাতুল্লাহ(?:ি\s*ওয়া\s*বারাকাতুহু?)?|\s+wa\s*rahmatullah(?:i\s*wa\s*barakatuhu?)?)?(?:\s*[।,!?\-]*\s*(?:ভাই|ভাইয়া|বোন|বন্ধু|তুমি\s*কেমন\s*আছো?|কেমন\s*আছো?(?:\s*তুমি)?|কেমন\s*আছেন(?:\s*আপনি)?|kemon\s*acho|kmn\s*acho))?[।!?.,\s]*$/i,
+    hello: /^\s*(?:হ্যালো|হাই|হেই|ওহে|প্রিয়|সুপ্রভাত|শুভ\s*সকাল|শুভ\s*দুপুর|শুভ\s*বিকেল|শুভ\s*সন্ধ্যা|hello|hi+|hey+|hlw|good\s*morning|good\s*afternoon|good\s*evening)(?:\s*[।,!?\-]*\s*(?:ভাই|ভাইয়া|বন্ধু|কেমন\s*আছো?(?:\s*তুমি)?|কেমন\s*আছেন|there|bro|friend))?[।!?.,\s]*$/i,
+    howAreYou: /^\s*(?:আচ্ছা\s*|এই\s*যে\s*)?(?:আপনি\s*|তুমি\s*|তোমরা\s*|ভাই\s*|ভাইয়া\s*)?(?:কেমন\s*আছো?|কেমন\s*আছেন|কেমন\s*আছিস|কী\s*অবস্থা|কি\s*অবস্থা|কী\s*খবর|কি\s*খবর|দিনকাল\s*কেমন\s*(?:যাচ্ছে|কাটছে)|সব\s*ঠিকঠাক|ভালো\s*আছো?\s*তো|ভালো\s*আছেন\s*তো|kemon\s*acho|kemon\s*achen|kmn\s*acho|kmn\s*aso|ki\s*khobor|ki\s*obostha|how\s*are\s*you(?:\s*doing)?|how'?s\s*it\s*going|what'?s\s*up)(?:\s*(?:তুমি|আপনি|ভাই|ভাইয়া|বন্ধু|বলো|তো|এখন|আজকে?|tumi|apni|bhai|bro))?[।!?.,\s]*$/i,
+    userGood: /^\s*(?:আলহামদুলিল্লাহ\s*)?(?:আমিও?\s*)?(?:ভালো(?:\s*আছি)?|বেশ\s*ভালো(?:\s*আছি)?|অনেক\s*ভালো(?:\s*আছি)?|আলহামদুলিল্লাহ(?:\s*ভালো)?|চলে\s*যাচ্ছে|মোটামুটি(?:\s*ভালো)?|খুব\s*ভালো(?:\s*আছি)?|alhamdulillah(?:\s*valo|\s*bhalo|\s*good|\s*fine)?|ami\s*valo\s*achi|bhalo\s*achi|valo\s*asi|i'?m\s*(?:good|fine|doing\s*well)|doing\s*(?:good|great|well))[।!?.,\s]*$/i,
+    userSad: /(?:মন(?:টা)?\s*(?:আজকে?\s*)?(?:খুব\s*|একটু\s*|অনেক\s*|বেশ\s*|বড্ড\s*)?খারাপ|(?:খুব|অনেক|বড্ড)\s*কষ্ট(?:ে\s*আছি|\s*পাচ্ছি|\s*লাগছে)|হতাশ\s*লাগছে|ডিপ্রেশনে\s*আছি|দুশ্চিন্তা\s*(?:লাগছে|হচ্ছে)|ভালো\s*লাগছে\s*না|অস্থির\s*লাগছে|একা\s*লাগছে|টেনশনে\s*আছি|অনেক\s*চাপে\s*আছি|mon(?:\s*ta)?\s*(?:ektu\s*|khub\s*)?kharap|valo\s*lagche\s*na|koste\s*achi|tension\s*lagche|feeling\s*(?:sad|down|depressed|lonely|anxious)|i\s*am\s*(?:sad|depressed|stressed|worried))/i,
+    whatDoing: /^\s*(?:তুমি\s*|আপনি\s*)?(?:এখন\s*)?(?:ক[িী]\s*করছো?|ক[িী]\s*করছেন|ক[িী]\s*করো?|ব্যস্ত\s*নাকি|ফ্রি\s*আছো?|আছো?\s*নাকি|ki\s*korcho|ki\s*koro|ki\s*korchen|free\s*acho|what\s*are\s*you\s*doing)(?:\s*(?:তুমি|আপনি|এখন))?[।!?.,\s]*$/i,
+    canWeChat: /^\s*(?:আমার\s*সাথে\s*|একটু\s*)?(?:কথা\s*বলবে|কথা\s*বলতে\s*পারো?|গল্প\s*করবে|আড্ডা\s*দেবে|নরমাল\s*কথা\s*বলো|স্বাভাবিক\s*কথা\s*বলো|তুমি\s*কি\s*কথা\s*বলতে\s*পারো|বাংলায়?\s*কথা\s*বলতে\s*পারো?|তুমি\s*কি\s*বাংলা\s*বোঝো|আমার\s*বন্ধু\s*হবে|তুমি\s*কি\s*আমার\s*বন্ধু|বোর\s*লাগছে|ক[িী]\s*নিয়ে\s*কথা\s*বলব|kotha\s*bolbe|golpo\s*korbe|can\s*we\s*(?:talk|chat)|talk\s*to\s*me|let'?s\s*chat|be\s*my\s*friend)[।!?.,\s]*$/i,
+    thanks: /^\s*(?:অনেক\s*|অসংখ্য\s*)?(?:ধন্যবাদ|থ্যাংক\s*ইউ|থ্যাংকস|শুকরিয়া|জাযাকাল্লাহ(?:ু\s*খাইরান)?|জাজাকাল্লাহ(?:ু\s*খাইরান)?|বারাকাল্লাহ(?:ু\s*ফিকুম)?|dhonnobad|shukriya|jazakallah(?:\s*khair(?:an)?)?|thanks?(?:\s*a\s*lot)?|thank\s*you(?:\s*so\s*much)?|ty|tnx)(?:\s*(?:ভাই|ভাইয়া|তোমাকে|আপনাকে))?[।!?.,\s]*$/i,
+    praise: /^\s*(?:মাশাআল্লাহ|সুবহানাল্লাহ|আলহামদুলিল্লাহ\s*অনেক\s*সুন্দর|খুব\s*সুন্দর(?:\s*বলেছো|\s*হয়েছে)?|অসাধারণ|দারুণ|চমৎকার|অনেক\s*ভালো\s*লাগলো|অনেক\s*উপকার\s*হলো|খুব\s*ভালো\s*লেগেছে|তুমি\s*(?:অনেক|খুব)\s*ভালো|mashallah|masha\s*allah|subhanallah|khub\s*sundor|awesome|great(?:\s*answer)?|nice|wonderful)[।!?.,\s]*$/i,
+    ack: /^\s*(?:আচ্ছা|ও\s*আচ্ছা|ওহ\s*আচ্ছা|হুম+|ঠিক\s*আছে|বুঝলাম|বুঝতে\s*পেরেছি|জি\s*বুঝেছি|হ্যাঁ|জি|ওকে|সহমত|ইনশাআল্লাহ|আমিন|সুম্মা\s*আমিন|আস্তাগফিরুল্লাহ|আল্লাহু\s*আকবার|accha|oh\s*accha|hmm+|ok+|okay|bujhlam|bujhte\s*perechi|thik\s*ache|inshallah|ameen)[।!?.,\s]*$/i,
+    farewell: /^\s*(?:আল্লাহ\s*হাফেজ|খোদা\s*হাফেজ|ফি\s*আমানিল্লাহ|বিদায়|আসি\s*তাহলে|পরে\s*কথা\s*হবে|ভালো\s*থেকো|ভালো\s*থাকবেন|শুভ\s*রাত্রি|allah\s*hafez|fi\s*amanillah|bye+|good\s*bye|good\s*night|tata|see\s*you)[।!?.,\s]*$/i,
+    duaReq: /^\s*(?:আমার\s*জন্য\s*|আমাদের\s*জন্য\s*)?(?:দোয়া\s*করো?|দোয়া\s*করবেন|দোয়া\s*রেখো|doa\s*koro|dua\s*korben|pray\s*for\s*me)[।!?.,\s]*$/i,
+    identity: /^\s*(?:তুমি\s*কে|আপনি\s*কে|তোমার\s*পরিচয়\s*ক[িী]|তোমার\s*নাম\s*ক[িী]|আপনার\s*নাম\s*ক[িী]|কে\s*তৈরি\s*করেছে|তোমাকে\s*কে\s*বানিয়েছে|ক[িী]ভাবে\s*কাজ\s*করো?|তুমি\s*ক[িী]\s*(?:ক[িী]\s*)?করতে\s*পারো?|তুমি\s*কি\s*এআই|তুমি\s*কি\s*চ্যাটজিপিটি|tumi\s*ke|tomar\s*nam\s*ki|ke\s*baniyeche|who\s*are\s*you|what\s*is\s*your\s*name|who\s*created\s*you|how\s*do\s*you\s*work)[।!?.,\s]*$/i,
+    timeDate: /^\s*(?:এখন\s*|আজকে?\s*)?(?:কয়টা\s*বাজে|সময়\s*কত|আজকে?\s*ক[িী]\s*বার|ক[িী]\s*বার\s*আজকে?|আজকের?\s*তারিখ\s*কত|আজ\s*কত\s*তারিখ|কয়\s*তারিখ\s*আজকে?|koyta\s*baje|ajke\s*ki\s*bar|aj\s*koto\s*tarikh|what\s*time\s*is\s*it|what\s*day\s*is\s*today|today'?s?\s*date)(?:\s*(?:এখন|আজকে?|বলো(?:\s*তো)?|now))?[।!?.,\s]*$/i,
+    eatSleep: /^\s*(?:তুমি\s*ক[িী]\s*)?(?:ভাত\s*(?:খেয়েছো?|খাইছো?|খান)|চা\s*(?:খেয়েছো?|খাইছো?)|নাস্তা\s*(?:করেছো?|করছো?)|খাবার\s*খেয়েছো?|ক[িী]\s*খেয়েছো?|ঘুমাও\s*না|তুমি\s*ক[িী]\s*ঘুমাও|তুমি\s*ক[িী]\s*খাও|bhat\s*khaicho|vat\s*khaicho|nasta\s*korcho|khawa\s*dawa\s*korcho|have\s*you\s*eaten)(?:\s*(?:তুমি|ভাই))?[।!?.,\s]*$/i,
+    whereLive: /^\s*(?:তুমি\s*কোথায়\s*থাকো|আপনি\s*কোথায়\s*থাকেন|তোমার\s*বাসা\s*কোথায়|তোমার\s*বাড়ি\s*কোথায়|তোমার\s*বয়স\s*কত|তুমি\s*ক[িী]\s*মানুষ\s*(?:না|নাকি)\s*(?:রোবট|এআই)|তুমি\s*ক[িী]\s*রোবট|kothay\s*thako|tomar\s*bari\s*kothay|where\s*do\s*you\s*live|how\s*old\s*are\s*you|are\s*you\s*human)[।!?.,\s]*$/i,
+    myName: /^\s*(?:আমার\s*নাম\s*(?:হলো\s*|হচ্ছে\s*)?|আমি\s*হলাম\s*|my\s*name\s*is\s+|i\s*am\s+)([^\d?!।.,;:\n]{2,28})[।!?.,\s]*$/i,
+    story: /^\s*(?:একটা\s*(?:গল্প|ঘটনা|শিক্ষণীয়\s*গল্প|ইসলামিক\s*গল্প|মজার\s*কিছু|জোকস)\s*(?:বলো|বলেন|শোনাও)|গল্প\s*বলো|জোকস\s*বলো|মজার\s*কিছু\s*বলো|tell\s*me\s*a\s*story|ekta\s*golpo\s*bolo)[।!?.,\s]*$/i,
+    inspire: /^\s*(?:আমাকে\s*)?(?:একটা\s*|কিছু\s*)?(?:সুন্দর\s*|ভালো\s*|ইসলামিক\s*)?(?:উপদেশ\s*দাও|নসিহত\s*(?:করো|দাও)|হাদ[িী]স\s*(?:বলো|শোনাও)|আয়াত\s*(?:বলো|শোনাও)|অনুপ্রেরণা\s*দাও|মন\s*ভালো\s*করার\s*(?:মতো\s*)?(?:একটা\s*)?(?:সুন্দর\s*)?(?:হাদ[িী]স\s*(?:বা\s*উপদেশ\s*)?(?:শোনাও|বলো)|কিছু\s*বলো)|give\s*me\s*(?:some\s*)?advice|tell\s*me\s*a\s*hadith)[।!?.,\s]*$/i,
+    elaborate: /^\s*(?:আরেকটু\s*|আরও\s*|একটু\s*)?(?:বিস্তারিত\s*(?:বলো|বলুন|বোঝাও)|সহজ\s*করে\s*(?:বলো|বোঝাও|বুঝিয়ে\s*বলো)|পুরোটা\s*(?:বলো|বলুন)|ব্যাখ্যা\s*(?:করো|দাও)|আরও\s*জানতে\s*চাই|আরেকটু\s*বলো|aro\s*bistarito\s*bolo|sohoj\s*kore\s*bolo|explain\s*more|tell\s*me\s*more)[।!?.,\s]*$/i,
+    askDalil: /^\s*(?:এর\s*|এটার\s*|এই\s*বিষয়ের\s*)?(?:দলিল\s*ক[িী]|দলিল\s*দাও|দলিলগুলো\s*দেখাও|হাদ[িী]সটা\s*বলো|কোন\s*সূরায়\s*আছে|রেফারেন্স\s*দাও|dalil\s*ki|reference\s*dao|what\s*is\s*the\s*evidence)[।!?.,\s]*$/i,
+    askVideo: /^\s*(?:এ\s*বিষয়ে\s*|এটার\s*)?(?:কোনো\s*)?(?:ভিডিও\s*আছে|ভিডিও\s*দাও|ভিডিও\s*আলোচনা\s*দেখুন|লেকচার\s*আছে|video\s*ache|any\s*video)[।!?.,\s]*$/i,
+    ellipsisFollowup: /^\s*(?:আর\s+|তাহলে\s+|কিন্তু\s+|যদি\s+|এতে\s*কি\s+|সেক্ষেত্রে\s+|ওটা\s+|এটা\s+|এই\s*অবস্থায়\s+|নাকি\s+)/i,
+    leadingSalam: /^\s*(?:আসসালামু\s*আলাইকুম|আস-সালামু\s*আলাইকুম|সালাম|assalamu\s*alaikum|salam)(?=\s|[।,!?:;\-]|$)/i,
+  };
+
+  function toBnDigitsStr(val) {
+    const bn = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+    return String(val).replace(/\d/g, (d) => bn[Number(d)]);
+  }
+
+  function dhakaNowText() {
+    const now = new Date();
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Dhaka',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    });
+    const parts = Object.fromEntries(fmt.formatToParts(now).map((p) => [p.type, p.value]));
+    const weekdays = {
+      Monday: 'সোমবার', Tuesday: 'মঙ্গলবার', Wednesday: 'বুধবার', Thursday: 'বৃহস্পতিবার',
+      Friday: 'শুক্রবার', Saturday: 'শনিবার', Sunday: 'রবিবার',
+    };
+    const months = ['', 'জানুয়ারি', 'ফেব্রুয়ারি', 'মার্চ', 'এপ্রিল', 'মে', 'জুন', 'জুলাই', 'আগস্ট', 'সেপ্টেম্বর', 'অক্টোবর', 'নভেম্বর', 'ডিসেম্বর'];
+    const h24 = Number(
+      new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(now)
+    );
+    let period = 'রাত';
+    if (h24 >= 5 && h24 < 12) period = 'সকাল';
+    else if (h24 >= 12 && h24 < 15) period = 'দুপুর';
+    else if (h24 >= 15 && h24 < 18) period = 'বিকেল';
+    else if (h24 >= 18 && h24 < 20) period = 'সন্ধ্যা';
+    return `বাংলাদেশ সময় অনুযায়ী এখন **${period} ${toBnDigitsStr(parts.hour)}:${toBnDigitsStr(parts.minute)}** মিনিট — আজ **${weekdays[parts.weekday] || parts.weekday}, ${toBnDigitsStr(parts.day)} ${months[Number(parts.month)]} ${toBnDigitsStr(parts.year)}**।`;
+  }
+
+  function handleDialogueTurn(question, totalDocs, totalVids, history, t0) {
+    const q = String(question || '').trim();
+    if (!q) return null;
+
+    let lastCtx = null;
+    let userName = '';
+    if (Array.isArray(history)) {
+      for (const item of history) {
+        if (item && item.role === 'user') {
+          const m = String(item.text || '').trim().match(CHAT_PATTERNS.myName);
+          if (m) {
+            const cand = m[1].trim();
+            if (cand.split(/\s+/).length <= 3 && !CHAT_PATTERNS.userSad.test(cand) && !CHAT_PATTERNS.userGood.test(cand)) {
+              userName = cand;
+            }
+          }
+        }
+      }
+      for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i] && history[i].role === 'assistant' && history[i].primary_title) {
+          lastCtx = history[i];
+          break;
+        }
       }
     }
+    const nameTag = userName ? `, ${userName}` : '';
+
+    const makeChat = (replyText, extraParas = [], followUps = [], extras = {}) => ({
+      status: 'conversational',
+      is_chat: true,
+      query: q,
+      headline: '',
+      direct_answer: replyText,
+      explanation_paragraphs: extraParas,
+      additional_perspectives: [],
+      evidences: extras.evidences || [],
+      sources: extras.sources || [],
+      videos: extras.videos || [],
+      follow_ups: followUps,
+      confidence: 1.0,
+      latency_ms: Math.max(1, Math.round(performance.now() - t0)),
+      ask_team_url: `${SITE_URL}/ask.html`,
+    });
+
+    if (CHAT_PATTERNS.salam.test(q)) {
+      return makeChat(
+        `ওয়া আলাইকুমুস সালাম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু${nameTag}! 😊 কেমন আছেন আপনি?`,
+        [
+          'আপনি আমার সাথে একদম স্বাভাবিকভাবে যেকোনো কথাবার্তা বলতে পারেন, আবার ইসলামিক কোনো মাসআলা বা প্রশ্ন থাকলে সেটিও জিজ্ঞেস করতে পারেন—আমি **DAWAH X**-এর দলিলসহ উত্তর দেব।',
+        ],
+        ['কেমন আছো তুমি?', 'মন ভালো করার একটা ইসলামিক উপদেশ দাও', 'সালাতে মনোযোগ বাড়ানোর উপায় কী?']
+      );
+    }
+
+    if (CHAT_PATTERNS.hello.test(q)) {
+      return makeChat(
+        `হ্যালো${nameTag}! আসসালামু আলাইকুম। কেমন আছেন আপনি?`,
+        [
+          'আমি **DAWAH X AI**—আপনার সাথে স্বাভাবিক আলাপচারিতা কিংবা কুরআন-সুন্নাহভিত্তিক যেকোনো প্রশ্নের আলোচনায় আছি। আজ কী নিয়ে কথা বলব?',
+        ],
+        ['তুমি কী কী করতে পারো?', 'একটা সুন্দর হাদীস শোনাও', 'আল্লাহর অস্তিত্বের প্রমাণ কী?']
+      );
+    }
+
+    if (CHAT_PATTERNS.howAreYou.test(q)) {
+      return makeChat(
+        `আলহামদুলিল্লাহ${nameTag}, আমি বেশ ভালো আছি! আন্তরিকভাবে খোঁজ নেওয়ার জন্য আপনাকে অনেক ধন্যবাদ। আপনি কেমন আছেন? আজকের দিনটা কেমন কাটছে আপনার?`,
+        [],
+        ['আলহামদুলিল্লাহ, আমিও ভালো আছি', 'আজকে মনটা একটু খারাপ', 'একটা সুন্দর ইসলামিক উপদেশ দাও']
+      );
+    }
+
+    if (CHAT_PATTERNS.userGood.test(q)) {
+      const hint = lastCtx
+        ? `আমরা একটু আগে **‘${lastCtx.primary_title}’** নিয়ে কথা বলছিলাম—চাইলে সে বিষয়ে আরও আলাপ করতে পারি, অথবা নতুন যেকোনো কথা বলতে পারেন!`
+        : 'কোনো বিষয়ে গল্প করতে চাইলে বা ইসলামিক কোনো প্রশ্ন মনে এলে নির্দ্বিধায় বলতে পারেন!';
+      return makeChat(
+        `আলহামদুলিল্লাহ${nameTag}, শুনে খুব ভালো লাগলো! আল্লাহ তাআলা আপনাকে সবসময় সুস্থ, প্রশান্ত ও নিরাপদে রাখুন।`,
+        [hint]
+      );
+    }
+
+    if (CHAT_PATTERNS.whatDoing.test(q)) {
+      return makeChat(
+        `এই তো${nameTag}, আপনার সাথেই গল্প করছি! পাশাপাশি **DAWAH X**-এর ${totalDocs.toLocaleString('en-IN')}+ ফতোয়া ও প্রবন্ধের জ্ঞানভাণ্ডার নিয়ে প্রস্তুত আছি। আপনি এখন কী করছেন?`
+      );
+    }
+
+    if (CHAT_PATTERNS.canWeChat.test(q)) {
+      return makeChat(
+        `জি অবশ্যই${nameTag}! একদম নিঃসংকোচে স্বাভাবিক বাংলায়, Banglish-এ বা ইংরেজিতে আমার সাথে কথা বলতে পারেন। আমি মনোযোগ দিয়ে শুনছি—বলুন কী বলবেন?`
+      );
+    }
+
+    if (CHAT_PATTERNS.thanks.test(q)) {
+      return makeChat(
+        `ওয়া ইয়্যাকুম${nameTag}—আল্লাহ আপনাকেও উত্তম প্রতিদান দিন! আপনার উপকারে আসতে পেরে আমারও খুব ভালো লাগলো। আর কোনো প্রশ্ন বা কথা থাকলে নির্দ্বিধায় বলুন।`
+      );
+    }
+
+    if (CHAT_PATTERNS.praise.test(q)) {
+      return makeChat(
+        'আলহামদুলিল্লাহ, আপনার ভালো লেগেছে জেনে খুব আনন্দিত হলাম! সব প্রশংসা মহান আল্লাহর। আরও কিছু নিয়ে আলোচনা করতে চাইলে বলুন।'
+      );
+    }
+
+    if (CHAT_PATTERNS.ack.test(q)) {
+      return makeChat(
+        lastCtx
+          ? `জি! **‘${lastCtx.primary_title}’** বিষয়ে আরও কিছু জানার থাকলে বা অন্য কোনো প্রসঙ্গে কথা বলতে চাইলে নির্দ্বিধায় বলুন।`
+          : 'জি, বলুন—কোন বিষয়ে কথা বলতে বা জানতে চান?'
+      );
+    }
+
+    if (CHAT_PATTERNS.farewell.test(q)) {
+      return makeChat(
+        `আল্লাহ হাফেজ${nameTag}! ফি আমানিল্লাহ—মহান আল্লাহ আপনাকে ও আপনার পরিবারকে সবসময় সুস্থ, নিরাপদ ও ঈমানের ওপর অবিচল রাখুন। আবার যেকোনো সময় কথা বলতে চলে আসবেন!`
+      );
+    }
+
+    if (CHAT_PATTERNS.duaReq.test(q)) {
+      return makeChat(
+        'মহান আল্লাহ আপনার সকল বৈধ আশা পূরণ করুন, আপনার দুশ্চিন্তা দূর করে অন্তরে প্রশান্তি দান করুন এবং দুনিয়া ও আখিরাতে কল্যাণ দান করুন—আমিন!'
+      );
+    }
+
+    if (CHAT_PATTERNS.identity.test(q)) {
+      const f = foldBn(q);
+      if (!f.includes('আল্লাহ') && !f.includes('রব') && !f.includes('নবি') && !f.includes('রাসুল')) {
+        return makeChat(
+          `আমি **DAWAH X AI**। আমি আপনার সাথে যেমন বন্ধুভাবাপন্নভাবে স্বাভাবিক কথাবার্তা বলতে পারি, তেমনি কোনো ইসলামিক প্রশ্ন করলে **DAWAH X** ওয়েবসাইটের **${totalDocs.toLocaleString('en-IN')}টি** যাচাইকৃত ফতোয়া ও প্রবন্ধ এবং **${totalVids.toLocaleString('en-IN')}টি** ভিডিও থেকে দলিলসহ উত্তর দিই।`,
+          [
+            'আমার বিশেষত্ব হলো—সাধারণ কথাবার্তায় আমি আপনার সাথে সহজভাবে আলাপ করি, কিন্তু শরীআতের মাসআলা বা ফতোয়ার ক্ষেত্রে কখনোই নিজের থেকে মনগড়া কিছু বলি না; সবসময় DAWAH X-এর নির্ভরযোগ্য সূত্রসহ উত্তর দিই।',
+          ]
+        );
+      }
+    }
+
+    if (CHAT_PATTERNS.timeDate.test(q)) {
+      return makeChat(dhakaNowText());
+    }
+
+    if (CHAT_PATTERNS.eatSleep.test(q)) {
+      return makeChat(
+        `হা হা, আমি তো এআই${nameTag}—আমার ভাত-চা বা ঘুমের প্রয়োজন হয় না! 😄 তবে আপনার সাথে কথা বলেই আমার দারুণ সময় কাটছে। আপনি খাওয়া-দাওয়া করেছেন তো?`
+      );
+    }
+
+    if (CHAT_PATTERNS.whereLive.test(q)) {
+      return makeChat(
+        'আমি কোনো রক্ত-মাংসের মানুষ নই, আমি **DAWAH X**-এর ডিজিটাল জগতে থাকি—যেন দিন-রাত যেকোনো সময় আপনার সাথে কথা বলতে পারি এবং কুরআন-সুন্নাহর নির্ভরযোগ্য তথ্য খুঁজে দিতে পারি!'
+      );
+    }
+
+    const mName = q.match(CHAT_PATTERNS.myName);
+    if (mName) {
+      const extracted = mName[1].trim();
+      if (extracted.split(/\s+/).length <= 3 && !CHAT_PATTERNS.userSad.test(extracted) && !CHAT_PATTERNS.userGood.test(extracted)) {
+        return makeChat(
+          `মাশাআল্লাহ, আপনার সাথে পরিচিত হয়ে খুব ভালো লাগলো, **${extracted}**! আমি আপনার নামটি মনে রাখলাম। বলুন, আজ কী নিয়ে আলাপ করব?`
+        );
+      }
+    }
+
+    if (CHAT_PATTERNS.story.test(q)) {
+      return makeChat(
+        'একটি ছোট ও হৃদয়স্পর্শী হাদীসের ঘটনা শোনাই—',
+        [
+          'একবার এক ব্যক্তি রাসূলুল্লাহ ﷺ-এর কাছে এসে জিজ্ঞেস করলেন: *‘হে আল্লাহর রাসূল! আমার উত্তম আচরণের সবচেয়ে বেশি হকদার কে?’* নবীজি ﷺ বললেন: **‘তোমার মা।’** লোকটি বললেন, *‘তারপর কে?’* নবীজি ﷺ বললেন: **‘তোমার মা।’** লোকটি তৃতীয়বার জিজ্ঞেস করলে নবীজি ﷺ আবারও বললেন: **‘তোমার মা।’** চতুর্থবার জিজ্ঞেস করলে তিনি বললেন: **‘তোমার বাবা।’** (সহীহ বুখারী ও মুসলিম)',
+          'এই ছোট্ট ঘটনাটি আমাদের মনে করিয়ে দেয়—বাবা-মায়ের প্রতি একটুখানি হাসিমুখে কথা বলা ও তাঁদের খোঁজখবর নেওয়া কত বড় ইবাদত!',
+        ],
+        ['পিতা-মাতার অবাধ্যতার পরিণাম কী?', 'মৃত পিতা-মাতার জন্য সন্তানের করণীয় আমল কী কী?']
+      );
+    }
+
+    if (CHAT_PATTERNS.inspire.test(q)) {
+      const rem = DAWAHX_REMINDERS[new Date().getMinutes() % DAWAHX_REMINDERS.length];
+      return makeChat(
+        `নিশ্চয়ই! কুরআন ও হাদীস থেকে একটি হৃদয়স্পর্শী বাণী শেয়ার করছি—\n\n${rem.arabic}\n\n**অর্থ:** “${rem.meaning}” (${rem.ref})`,
+        [rem.reflection],
+        ['তওবা করার সঠিক নিয়ম কী?', 'সালাতে খুশু-খুযু বা মনোযোগ বাড়ানোর উপায় কী?', 'পৃথিবীতে বিপদ ও পরীক্ষা কেন আসে?']
+      );
+    }
+
+    if (q.length <= 95 && CHAT_PATTERNS.userSad.test(q) && !q.includes('?')) {
+      const rem = DAWAHX_REMINDERS[0];
+      return makeChat(
+        `শুনে খারাপ লাগলো যে আপনার মন ভালো নেই${nameTag}। জীবনে কখনো কখনো এমন ভারাক্রান্ত সময় আসে—নিজেকে একা ভাববেন না। একটু গভীর শ্বাস নিন, আল্লাহর কাছে মনের কথাগুলো খুলে বলুন।`,
+        [
+          `মহান আল্লাহ কুরআনে সান্ত্বনা দিয়ে বলেছেন: ${rem.arabic} — **“${rem.meaning}”** (${rem.ref})।`,
+          'চাইলে আমাকে খুলে বলতে পারেন কী নিয়ে দুশ্চিন্তা বা কষ্ট লাগছে—আমি শুনছি।',
+        ],
+        ['হতাশা ও দুশ্চিন্তা দূর করার ইসলামিক উপায় কী?', 'গুনাহ হয়ে গেলে আল্লাহর ক্ষমা পাওয়ার উপায় কী?', 'দোয়া কবুল হওয়ার উত্তম সময় কোনটি?']
+      );
+    }
+
+    if (lastCtx) {
+      if (CHAT_PATTERNS.elaborate.test(q) && lastCtx.extra_body) {
+        const paras = String(lastCtx.extra_body)
+          .split(/\n\n+/)
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .slice(0, 4);
+        if (paras.length) {
+          return makeChat(
+            `অবশ্যই, **‘${lastCtx.primary_title}’** বিষয়ে আরও বিস্তারিত তুলে ধরছি—`,
+            paras,
+            [],
+            { sources: (lastCtx.sources || []).slice(0, 2) }
+          );
+        }
+      }
+      if (CHAT_PATTERNS.askDalil.test(q) && Array.isArray(lastCtx.evidences) && lastCtx.evidences.length) {
+        return makeChat(
+          `**‘${lastCtx.primary_title}’** বিষয়ে উদ্ধৃত কুরআন ও হাদীসের দলিলসমূহ নিচে দেওয়া হলো—`,
+          [],
+          [],
+          { evidences: lastCtx.evidences, sources: (lastCtx.sources || []).slice(0, 2) }
+        );
+      }
+      if (CHAT_PATTERNS.askVideo.test(q) && Array.isArray(lastCtx.videos) && lastCtx.videos.length) {
+        return makeChat(
+          `**‘${lastCtx.primary_title}’** বিষয়ে DAWAH X ভিডিও গ্যালারি থেকে প্রাসঙ্গিক আলোচনাসমূহ—`,
+          [],
+          [],
+          { videos: lastCtx.videos }
+        );
+      }
+    }
+
     return null;
+  }
+
+  function augmentQueryWithHistory(question, history) {
+    if (!Array.isArray(history) || !history.length) return { query: question, usedHistory: false };
+    let lastCtx = null;
+    for (let i = history.length - 1; i >= 0; i--) {
+      if (history[i] && history[i].role === 'assistant' && history[i].primary_title) {
+        lastCtx = history[i];
+        break;
+      }
+    }
+    if (!lastCtx) return { query: question, usedHistory: false };
+
+    const qExpanded = translateBanglishAndEnglish(question);
+    const qCore = [...new Set(tokenizeFolded(qExpanded, true))].filter(isCoreToken);
+    const startsContextual = CHAT_PATTERNS.ellipsisFollowup.test(question);
+
+    if (startsContextual || (qCore.length >= 1 && qCore.length <= 2 && String(question).trim().length <= 55)) {
+      const prevCore = [...new Set(tokenizeFolded(lastCtx.primary_title, true))].filter(isCoreToken).slice(0, 4);
+      if (prevCore.length) {
+        return { query: `${question} ${prevCore.join(' ')}`, usedHistory: true };
+      }
+    }
+    return { query: question, usedHistory: false };
+  }
+
+  function buildConversationalOpening(question, docType, sourceName, usedHistory) {
+    const salamPrefix = CHAT_PATTERNS.leadingSalam.test(String(question || ''))
+      ? 'ওয়া আলাইকুমুস সালাম ওয়া রাহমাতুল্লাহ! '
+      : '';
+    if (usedHistory) {
+      return `${salamPrefix}জি, আগের আলোচনার সূত্র ধরে **DAWAH X** (${sourceName})-এর দলিল থেকে বিষয়টি পরিষ্কার করছি—`;
+    }
+    if (docType === 'fatwa') {
+      return `${salamPrefix}জি, আপনার প্রশ্নটির বিষয়ে **DAWAH X** (${sourceName})-এ সুস্পষ্ট দলিলভিত্তিক উত্তর রয়েছে—`;
+    }
+    if (docType === 'rebuttal') {
+      return `${salamPrefix}অবশ্যই, এ বিষয়ে **DAWAH X** (${sourceName})-এর প্রামাণ্য বিশ্লেষণ থেকে মূল উত্তরটি তুলে ধরছি—`;
+    }
+    return `${salamPrefix}জি নিশ্চয়ই, **DAWAH X** (${sourceName})-এর সংগৃহীত প্রবন্ধ ও দলিলের আলোকে বিষয়টি সহজভাবে তুলে ধরছি—`;
   }
 
   // HTML & Evidence Parsing (identical logic to Python corpus.py & synthesizer.py)
@@ -381,7 +731,10 @@
 
     let ansParas = htmlToParagraphs(ansHtml);
     if (ansParas.length) {
-      ansParas[0] = ansParas[0].replace(/^\s*(?:উত্তর|জবাব)\s*[:ঃ\-–—]?\s*/, '').trim();
+      ansParas[0] = ansParas[0]
+        .replace(/^\s*(?:উত্তর|জবাব)\s*[:ঃ\-–—]?\s*/, '')
+        .replace(/^[:ঃ\-–—]+\s*/, '')
+        .trim();
       ansParas = ansParas.filter(Boolean);
     }
 
@@ -633,71 +986,45 @@
       return { ok: true, updated: true };
     },
 
-    async ask(question, sourceFilter = 'all', topK = 5) {
+    async ask(question, sourceFilter = 'all', topK = 5, history = []) {
       const t0 = performance.now();
-      const intent = detectConversationalIntent(question);
+      const preDocs = (this.stats && this.stats.texts) || (this.meta && this.meta.n) || 24207;
+      const preVids = (this.stats && this.stats.videos) || 9310;
+
+      // Fast-path: respond instantaneously to natural everyday conversation while warming corpus index in background
+      const chatReply = handleDialogueTurn(question, preDocs, preVids, history, t0);
+      if (chatReply) {
+        this.init().catch(() => {});
+        return chatReply;
+      }
+
       await this.init();
-      const totalDocs = (this.stats && this.stats.texts) || this.meta.n || 24207;
-      const totalVids = (this.stats && this.stats.videos) || 9310;
-
-      if (intent === 'greeting') {
-        return {
-          status: 'conversational',
-          query: question,
-          headline: 'ওয়া আলাইকুমুস সালাম ওয়া রাহমাতুল্লাহি ওয়া বারাকাতুহু!',
-          direct_answer: `আমি **DAWAH X AI**। কুরআন ও সহীহ সুন্নাহর আলোকে সাজানো **DAWAH X** ওয়েবসাইটের **${totalDocs.toLocaleString('en-IN')}+** ফতোয়া, প্রশ্নোত্তর ও প্রবন্ধ এবং **${totalVids.toLocaleString('en-IN')}+** ইসলামিক ভিডিও থেকে আপনার প্রশ্নের দলিলভিত্তিক উত্তর খুঁজে দিতে প্রস্তুত।`,
-          explanation_paragraphs: [
-            'আপনি বাংলা, Banglish (যেমন: *namaz e sahu sijda dewar niyom*) অথবা ইংরেজিতে যেকোনো ইসলামিক মাসআলা, আকীদা, কুরআন-হাদীস কিংবা সংশয়মূলক প্রশ্ন করতে পারেন। আমি কোনো মনগড়া তথ্য যোগ না করে সরাসরি DAWAH X-এর যাচাইকৃত উৎস ও লিংকসহ উত্তর দেব।',
-          ],
-          additional_perspectives: [],
-          evidences: [],
-          sources: [],
-          videos: [],
-          follow_ups: [
-            'মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের ঘর করায় শারঈ বাধা আছে কি?',
-            'আল্লাহর অস্তিত্বের যুক্তি ও প্রমাণ কী?',
-            'যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, তাদের বিচার কীভাবে হবে?',
-            'ইসলামে গান ও বাদ্যযন্ত্রের বিধান কী?',
-          ],
-          confidence: 1.0,
-          latency_ms: Math.round(performance.now() - t0),
-          ask_team_url: `${SITE_URL}/ask.html`,
-        };
-      }
-
-      if (intent === 'identity') {
-        return {
-          status: 'conversational',
-          query: question,
-          headline: 'পরিচিতি — DAWAH X AI মডেল',
-          direct_answer: `আমি **DAWAH X** (${SITE_URL}/)-এর নিজস্ব ইসলামিক প্রশ্নোত্তর এআই মডেল। আমাকে কোনো ইসলামিক প্রশ্ন করা হলে আমি শুধুমাত্র এই ওয়েবসাইটের সংগৃহীত **${totalDocs.toLocaleString('en-IN')}টি** ফতোয়া, প্রবন্ধ ও প্রশ্নোত্তর এবং **${totalVids.toLocaleString('en-IN')}টি** ভিডিও থেকে উত্তর প্রদান করি।`,
-          explanation_paragraphs: [
-            'আমার মূল নীতি হলো **শতভাগ আমানতদারিতা**: ওয়েবসাইটে নেই এমন কোনো ফতোয়া বা মনগড়া কথা আমি নিজে থেকে তৈরি করি না। প্রতিটি উত্তরের নিচে মূল লেখার সরাসরি লিংক দেওয়া থাকে যাতে আপনি সম্পূর্ণ দলিল যাচাই করে পড়তে পারেন।',
-          ],
-          additional_perspectives: [],
-          evidences: [],
-          sources: [],
-          videos: [],
-          follow_ups: [
-            'সালাতে সাহু সিজদা কখন এবং কীভাবে দিতে হয়?',
-            'রোজা অবস্থায় ইনজেকশন বা স্যালাইন নিলে কি রোজা ভেঙে যাবে?',
-            'পৃথিবীতে দুঃখ-কষ্ট ও পরীক্ষা কেন দেওয়া হয়?',
-            'যাকাত ফরয হওয়ার নিসাব ও হিসাব করার নিয়ম কী?',
-          ],
-          confidence: 1.0,
-          latency_ms: Math.round(performance.now() - t0),
-          ask_team_url: `${SITE_URL}/ask.html`,
-        };
-      }
+      const { query: contextualQuery, usedHistory } = augmentQueryWithHistory(question, history);
 
       // Stage 1: Linguistic expansion & Concept-Group shard retrieval
-      const augQuery = translateBanglishAndEnglish(question);
+      const augQuery = translateBanglishAndEnglish(contextualQuery);
       const rawStems = [...new Set(tokenizeFolded(augQuery, true))];
-      let coreStems = rawStems.filter(isCoreToken);
-      if (!coreStems.length) coreStems = rawStems;
+      const coreStems = rawStems.filter(isCoreToken);
 
+      // If the message contains ONLY conversational/pronoun/stop words (zero substantive subject words),
+      // respond naturally as a conversational companion instead of matching random fatwas on stop words!
       if (!coreStems.length) {
-        return this._notFoundPayload(question, [], [], t0);
+        return {
+          status: 'conversational',
+          is_chat: true,
+          query: question,
+          headline: '',
+          direct_answer: 'জি, আমি মনোযোগ দিয়ে শুনছি! 😊 আপনার মনে কী চলছে খুলে বলুন—চাইলে সাধারণ কথাবার্তা বলতে পারেন, অথবা কোনো ইসলামিক বিষয়ে জানতে চাইলে সেটিও জিজ্ঞেস করতে পারেন।',
+          explanation_paragraphs: [],
+          additional_perspectives: [],
+          evidences: [],
+          sources: [],
+          videos: [],
+          follow_ups: ['মন ভালো করার একটা উপদেশ দাও', 'একটা শিক্ষণীয় ঘটনা বলো', 'সালাতে মনোযোগ বাড়ানোর উপায় কী?'],
+          confidence: 1.0,
+          latency_ms: Math.max(1, Math.round(performance.now() - t0)),
+          ask_team_url: `${SITE_URL}/ask.html`,
+        };
       }
 
       const N = this.meta.n;
@@ -1003,9 +1330,18 @@
         content: trimCleanly(c.answer_body, 1200),
       }));
 
+      const conversationalIntro = buildConversationalOpening(
+        question,
+        proseDoc.doc_type,
+        proseDoc.source_name,
+        usedHistory
+      );
+
       return {
         status: 'answered',
+        is_chat: false,
         query: question,
+        conversational_intro: conversationalIntro,
         headline: primary.clean_title,
         primary_source_name: primary.source_name,
         primary_doc_type: primary.doc_type,
@@ -1013,6 +1349,7 @@
         primary_url: primary.dawahx_url,
         direct_answer: directAnswer,
         explanation_paragraphs: explanationParas,
+        extra_body: trimCleanly(proseDoc.answer_body, 2600),
         additional_perspectives: additionalPerspectives,
         evidences,
         sources: sourcesPayload,
@@ -1029,12 +1366,13 @@
       const validPartials = partialDocs.filter((c) => c.confidence >= 0.16);
       return {
         status: 'not_found',
+        is_chat: true,
         query: question,
-        headline: 'DAWAH X সংগ্রহে এ বিষয়ে সরাসরি উত্তর পাওয়া যায়নি',
+        headline: '',
         direct_answer:
-          'দুঃখিত, আপনার এই নির্দিষ্ট প্রশ্নটির হুবহু বা নিশ্চিত উত্তর **DAWAH X**-এর বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। ইসলামী শরীআতের বিষয়ে অনুমান বা সাইটের বাইরের তথ্য দিয়ে মনগড়া ফতোয়া প্রদান করা থেকে আমরা বিরত থাকি।',
+          'আপনার কথাটির জন্য ধন্যবাদ! আমি আপনার সাথে স্বাভাবিকভাবে যেকোনো বিষয়ে কথাবার্তা বলতে পারি; তবে কোনো নির্দিষ্ট মাসআলা বা তথ্যগত প্রশ্নের ক্ষেত্রে আমি শুধুমাত্র **DAWAH X**-এর যাচাইকৃত সংগ্রহ থেকেই উত্তর দিই—যাতে কখনো মনগড়া বা ভুল ফতোয়া চলে না যায়।',
         explanation_paragraphs: [
-          'আপনি প্রশ্নটি ভিন্নভাবে বা মূল বাংলা শব্দ ব্যবহার করে পুনরায় খুঁজে দেখতে পারেন, অথবা নিচের বোতামে ক্লিক করে সরাসরি **DAWAH X টিমের** কাছে আপনার প্রশ্নটি পাঠাতে পারেন।',
+          'এই নির্দিষ্ট প্রশ্নটির সরাসরি উত্তর DAWAH X-এর বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। আপনি চাইলে প্রশ্নটি একটু ভিন্নভাবে লিখতে পারেন, নিচের বাটনে ক্লিক করে সরাসরি **DAWAH X টিমে** পাঠাতে পারেন, অথবা আমার সাথে অন্য যেকোনো বিষয়ে আলাপ চালিয়ে যেতে পারেন!',
         ],
         additional_perspectives: [],
         evidences: [],

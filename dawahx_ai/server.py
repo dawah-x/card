@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import DAWAHX_SITE_URL, __version__
+from .dialogue import augment_query_with_history, handle_dialogue_turn
 from .model import DawahXAIModel
 from .synthesizer import synthesize_response
 
@@ -45,9 +46,10 @@ app.add_middleware(
 
 
 class AskRequest(BaseModel):
-    question: str = Field(..., min_length=1, max_length=1200, description="Islamic question in Bengali, Banglish, or English")
+    question: str = Field(..., min_length=1, max_length=1200, description="Message or Islamic question")
     source_filter: str = Field(default="all", description="all | fatwa | dawah | article | at | ai | ik | fm | ra | iz | ia")
     top_k: int = Field(default=5, ge=1, le=10)
+    history: Optional[list[Dict[str, Any]]] = Field(default=None, description="Recent conversation turns for multi-turn context")
 
 
 class SyncRequest(BaseModel):
@@ -92,8 +94,12 @@ def api_ask_post(req: AskRequest) -> Dict[str, Any]:
     q = req.question.strip()
     if not q:
         raise HTTPException(status_code=400, detail="প্রশ্নটি লিখুন।")
-    retrieval = ai_model.retrieve(q, top_k=req.top_k, source_filter=req.source_filter)
-    return synthesize_response(q, retrieval, ai_model.summary)
+    chat_resp = handle_dialogue_turn(q, ai_model.summary, history=req.history)
+    if chat_resp is not None:
+        return chat_resp
+    aug_q, used_hist = augment_query_with_history(q, history=req.history)
+    retrieval = ai_model.retrieve(aug_q, top_k=req.top_k, source_filter=req.source_filter)
+    return synthesize_response(q, retrieval, ai_model.summary, history=req.history, used_history=used_hist)
 
 
 @app.get("/api/ask")

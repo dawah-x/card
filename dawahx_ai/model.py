@@ -743,13 +743,11 @@ class DawahXAIModel:
 
         # Keep core content tokens (excluding generic stop/question words)
         core_tokens = [t for t in dict.fromkeys(orig_tokens) if is_core_content_token(t)]
-        if not core_tokens and orig_tokens:
-            core_tokens = list(dict.fromkeys(orig_tokens))
 
         expanded_tokens, token_weights = expand_query_tokens(orig_tokens)
         core_set = set(core_tokens)
 
-        if not expanded_tokens:
+        if not core_tokens or not expanded_tokens:
             return {
                 "candidates": [],
                 "videos": [],

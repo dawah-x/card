@@ -201,9 +201,33 @@
 
     async ask(question) {
       const t0 = performance.now();
+      const q = String(question || '').trim();
+      // Natural everyday conversation fast-path
+      if (/^\s*(?:আসসালামু\s*আলাইকুম|সালাম|assalamu\s*alaikum|salam)(?:\s+ওয়া\s*রাহমাতুল্লাহ)?(?:\s*(?:ভাই|কেমন\s*আছো?|কেমন\s*আছেন|kemon\s*acho))?[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'ওয়া আলাইকুমুস সালাম ওয়া রাহমাতুল্লাহ! কেমন আছেন আপনি? আমার সাথে স্বাভাবিকভাবে কথা বলতে পারেন অথবা যেকোনো ইসলামিক প্রশ্ন করতে পারেন।' };
+      }
+      if (/^\s*(?:হ্যালো|হাই|hello|hi+|hey+)(?:\s*(?:কেমন\s*আছো?|there))?[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'হ্যালো! আসসালামু আলাইকুম। কেমন আছেন? আজ কী নিয়ে কথা বলব?' };
+      }
+      if (/^\s*(?:আপনি\s*|তুমি\s*)?(?:কেমন\s*আছো?|কেমন\s*আছেন|ক[িী]\s*খবর|ক[িী]\s*অবস্থা|kemon\s*acho|kmn\s*acho|how\s*are\s*you)[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'আলহামদুলিল্লাহ, আমি বেশ ভালো আছি! খোঁজ নেওয়ার জন্য ধন্যবাদ। আপনি কেমন আছেন?' };
+      }
+      if (/^\s*(?:আলহামদুলিল্লাহ\s*)?(?:আমিও?\s*)?(?:ভালো(?:\s*আছি)?|বেশ\s*ভালো|alhamdulillah|bhalo\s*achi|valo\s*achi|i'?m\s*(?:good|fine))[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'আলহামদুলিল্লাহ, শুনে খুব ভালো লাগলো! আল্লাহ আপনাকে সবসময় সুস্থ ও প্রশান্ত রাখুন। বলুন, কী নিয়ে আলাপ করব?' };
+      }
+      if (/^\s*(?:তুমি\s*)?(?:ক[িী]\s*করছো?|ক[িী]\s*করো?|ভাত\s*(?:খেয়েছো?|খাইছো?)|চা\s*খেয়েছো?|ki\s*korcho|bhat\s*khaicho|what\s*are\s*you\s*doing)[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'এই তো, আপনার সাথেই কথা বলছি! আর DAWAH X-এর দলিলভিত্তিক সংগ্রহ নিয়ে প্রস্তুত আছি। আপনার দিনটা কেমন কাটছে?' };
+      }
+      if (/^\s*(?:অনেক\s*)?(?:ধন্যবাদ|জাযাকাল্লাহ(?:ু\s*খাইরান)?|শুকরিয়া|মাশাআল্লাহ|আচ্ছা|বুঝলাম|ওকে|thanks?|thank\s*you|jazakallah|ok+|okay)[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'ওয়া ইয়্যাকুম—আল্লাহ আপনাকেও উত্তম প্রতিদান দিন! আরও কোনো কথা বা প্রশ্ন থাকলে নির্দ্বিধায় বলুন।' };
+      }
+      if (/^\s*(?:আল্লাহ\s*হাফেজ|ফি\s*আমানিল্লাহ|বিদায়|ভালো\s*থেকো|allah\s*hafez|bye+)[।!?.,\s]*$/i.test(q)) {
+        return { is_chat: true, direct_answer: 'আল্লাহ হাফেজ! ফি আমানিল্লাহ—আল্লাহ আপনাকে নিরাপদে রাখুন। আবার কথা হবে!' };
+      }
+
       await this.init();
       const groups = expandQueryTokens(question);
-      if (!groups.length) return { status: 'not_found', sources: [] };
+      if (!groups.length) return { status: 'not_found', is_chat: true, sources: [] };
 
       const N = this.meta.n;
       const docScores = new Map();
@@ -359,19 +383,19 @@
       <div class="hdr">
         <div>
           <b>DAWAH X AI সহকারী</b>
-          <small>শুধুমাত্র DAWAH X ওয়েবসাইটের দলিল থেকে উত্তর</small>
+          <small>স্বাভাবিক কথোপকথন ও DAWAH X দলিলভিত্তিক উত্তর</small>
         </div>
         <button class="xbtn" id="closeBtn">✕</button>
       </div>
       <div class="msgs" id="msgsBox">
         <div class="a-msg">
-          <h4>আসসালামু আলাইকুম!</h4>
-          <div>আপনার যেকোনো ইসলামিক প্রশ্ন লিখুন — DAWAH X-এর ২৪,২০৭+ ফতোয়া ও প্রবন্ধ থেকে সরাসরি দলিলসহ উত্তর দেওয়া হবে।</div>
+          <h4>আসসালামু আলাইকুম! 😊</h4>
+          <div>আমার সাথে স্বাভাবিকভাবে কথা বলুন অথবা যেকোনো ইসলামিক প্রশ্ন লিখুন — DAWAH X-এর ২৪,২০৭+ ফতোয়া ও প্রবন্ধ থেকে দলিলসহ উত্তর দেব।</div>
         </div>
       </div>
       <form class="inp-bar" id="wForm">
-        <input type="text" id="wInput" placeholder="আপনার প্রশ্ন লিখুন..." required />
-        <button type="submit">খুঁজুন</button>
+        <input type="text" id="wInput" placeholder="কথা বলুন বা প্রশ্ন লিখুন..." required />
+        <button type="submit">পাঠান</button>
       </form>
     </div>
   `;
@@ -408,29 +432,47 @@
     msgsBox.appendChild(a);
     msgsBox.scrollTop = msgsBox.scrollHeight;
 
+    let widgetHistory = window.__dawahxWidgetHistory || (window.__dawahxWidgetHistory = []);
     try {
       let resData;
       if (API_URL) {
         const r = await fetch(`${API_URL}/api/ask`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question: q, top_k: 4 }),
+          body: JSON.stringify({ question: q, top_k: 4, history: widgetHistory.slice(-8) }),
         });
         resData = await r.json();
+      } else if (window.DawahXBrowserAI) {
+        resData = await window.DawahXBrowserAI.ask(q, 'all', 4, widgetHistory.slice(-8));
       } else {
         resData = await StaticEngine.ask(q);
       }
+
+      widgetHistory.push({ role: 'user', text: q });
+      widgetHistory.push({
+        role: 'assistant',
+        text: resData.direct_answer || '',
+        primary_title: resData.headline || '',
+        extra_body: resData.extra_body || '',
+        evidences: resData.evidences || [],
+        sources: resData.sources || [],
+        videos: resData.videos || [],
+      });
 
       const links = (resData.sources || [])
         .slice(0, 3)
         .map((s) => `<a class="src-link" href="${esc(s.dawahx_url)}" target="_blank" rel="noopener">📄 ${esc(s.title)} ↗</a>`)
         .join('');
 
-      a.innerHTML = `
-        <h4>${esc(resData.headline || 'উত্তর')}</h4>
-        <div class="verdict">${esc(resData.direct_answer || '')}</div>
-        ${links || `<a class="src-link" href="${SITE_BASE}/ask.html" target="_blank">✉ DAWAH X টিমে প্রশ্ন পাঠান ↗</a>`}
-      `;
+      if (resData.is_chat || resData.status === 'conversational') {
+        a.innerHTML = `<div>${esc(resData.direct_answer || '')}</div>${links}`;
+      } else {
+        a.innerHTML = `
+          <h4>${esc(resData.headline || 'উত্তর')}</h4>
+          <div class="verdict">${esc(resData.direct_answer || '')}</div>
+          ${links || `<a class="src-link" href="${SITE_BASE}/ask.html" target="_blank">✉ DAWAH X টিমে প্রশ্ন পাঠান ↗</a>`}
+        `;
+      }
       msgsBox.scrollTop = msgsBox.scrollHeight;
     } catch (_) {
       a.textContent = 'দুঃখিত, সংযোগে ত্রুটি হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।';

@@ -428,11 +428,16 @@ GENERIC_QUERY_WORDS: Set[str] = {
         "ইসলাম", "ইসলামে", "ইসলামের", "ইসলামিক", "ইসলামী", "মুসলিম", "মুসলমান", "শারঈ", "শরীয়ত", "শরীআত",
         "প্রশ্ন", "উত্তর", "জানতে", "চাই", "বলুন", "জানান", "দয়া", "প্লিজ", "বিষয়ে", "সম্পর্কে", "ব্যাপারে",
         "বিধান", "হুকুম", "নিয়ম", "মাসআলা", "ফতোয়া", "দৃষ্টিতে", "মতে", "আলোকে",
-        # English stop words
+        # Conversational greetings & polite address words inside questions
+        "আসসালামু", "আলাইকুম", "সালাম", "রাহমাতুল্লাহ", "রাহমাতুল্লাহি", "বারাকাতুহু", "ওয়া",
+        "ভাই", "ভাইয়া", "বোন", "আপু", "হুজুর", "শায়খ", "শায়েখ", "স্যার", "বন্ধু",
+        "দয়া", "অনুগ্রহ", "প্লিজ", "একটু", "আচ্ছা", "হ্যালো", "হাই",
+        # English / Banglish stop & address words
         "what", "why", "how", "when", "where", "who", "which", "is", "are", "was", "were",
         "do", "does", "did", "can", "could", "should", "would", "will", "in", "on", "of",
         "to", "for", "with", "about", "from", "the", "a", "an", "and", "or", "if", "it",
         "islam", "islamic", "muslim", "muslims", "ruling", "according", "tell", "me", "please",
+        "assalamu", "alaikum", "salam", "bhai", "bhaiya", "hujur", "sheikh", "hello", "hi", "hey",
     ]
 }
 

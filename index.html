@@ -104,8 +104,8 @@
         <div class="header-left">
           <button class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
           <div class="model-badge-bar">
-            <strong>DAWAH X AI v1.0</strong>
-            <span class="strict-tag">✓ শতভাগ DAWAH-X দলিলনির্ভর · মনগড়া ফতোয়ামুক্ত</span>
+            <strong>DAWAH X AI v2.0</strong>
+            <span class="strict-tag">✓ স্বাভাবিক কথোপকথন + শতভাগ DAWAH-X দলিলনির্ভর</span>
           </div>
         </div>
         <div class="header-actions">
@@ -122,13 +122,16 @@
               <span class="ayah-ar">ٱدْعُ إِلَىٰ سَبِيلِ رَبِّكَ بِٱلْحِكْمَةِ وَٱلْمَوْعِظَةِ ٱلْحَسَنَةِ</span>
               <span class="ayah-bn">“তোমার রবের পথে আহ্বান করো প্রজ্ঞা ও উত্তম উপদেশের মাধ্যমে” — সূরা আন-নাহল ১৬:১২৫</span>
             </div>
-            <h2>সত্য জানুন। <span>দলিলসহ উত্তর খুঁজুন।</span></h2>
+            <h2>স্বাভাবিক আলাপ করুন। <span>দলিলসহ সত্য জানুন।</span></h2>
             <p class="welcome-lead">
-              যেকোনো ইসলামিক মাসআলা, ফতোয়া, আকীদা কিংবা সংশয়মূলক প্রশ্ন বাংলা, Banglish বা ইংরেজিতে লিখুন —
-              এই এআই মডেলটি শুধুমাত্র <b>DAWAH X</b> ওয়েবসাইটের যাচাইকৃত লেখা ও ভিডিও থেকে রেফারেন্সসহ উত্তর দেবে।
+              আমার সাথে বাংলা, Banglish বা ইংরেজিতে একদম বন্ধুভাবাপন্ন স্বাভাবিক কথাবার্তা বলুন — আর যেকোনো ইসলামিক মাসআলা, ফতোয়া বা প্রশ্ন করলে আমি শুধুমাত্র <b>DAWAH X</b> ওয়েবসাইটের যাচাইকৃত লেখা ও ভিডিও থেকে দলিলসহ উত্তর দেব।
             </p>
 
             <div class="starter-grid">
+              <button class="starter-card" data-q="আসসালামু আলাইকুম! কেমন আছো তুমি?">
+                <span class="starter-cat">স্বাভাবিক কথোপকথন শুরু করুন</span>
+                <span class="starter-q">আসসালামু আলাইকুম! কেমন আছো তুমি?</span>
+              </button>
               <button class="starter-card" data-q="মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের জন্য ঘর করায় শারঈ কোনো বাধা আছে কি?">
                 <span class="starter-cat">ফতোয়া ও মসজিদ সংক্রান্ত মাসআলা</span>
                 <span class="starter-q">মসজিদের সিঁড়ির নিচে ইমাম ও মুয়াজ্জিনের জন্য ঘর করায় শারঈ কোনো বাধা আছে কি?</span>
@@ -141,17 +144,13 @@
                 <span class="starter-cat">আকীদা ও নাস্তিকতা খণ্ডন</span>
                 <span class="starter-q">আল্লাহর অস্তিত্বের প্রমাণ কী? নাস্তিকদের সংশয়ের জবাব</span>
               </button>
-              <button class="starter-card" data-q="যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, পরকালে তাদের বিচার কীভাবে হবে?">
-                <span class="starter-cat">আখিরাত ও ন্যায়বিচার</span>
-                <span class="starter-q">যাদের কাছে ইসলামের দাওয়াত পৌঁছায়নি, পরকালে তাদের বিচার কীভাবে হবে?</span>
-              </button>
               <button class="starter-card" data-q="namaz e sahu sijda kokhon ebong kivabe dite hoy?">
                 <span class="starter-cat">Banglish প্রশ্ন উদাহরণ</span>
                 <span class="starter-q">namaz e sahu sijda kokhon ebong kivabe dite hoy?</span>
               </button>
-              <button class="starter-card" data-q="ইসলামে গান ও বাদ্যযন্ত্র শোনার বিধান কী? দলিলসহ বলুন">
-                <span class="starter-cat">হালাল-হারাম ও শরীআত</span>
-                <span class="starter-q">ইসলামে গান ও বাদ্যযন্ত্র শোনার বিধান কী? দলিলসহ বলুন</span>
+              <button class="starter-card" data-q="মন ভালো করার মতো একটা সুন্দর হাদীস বা উপদেশ শোনাও">
+                <span class="starter-cat">অনুপ্রেরণা ও নসিহত</span>
+                <span class="starter-q">মন ভালো করার মতো একটা সুন্দর হাদীস বা উপদেশ শোনাও</span>
               </button>
             </div>
           </section>
@@ -165,14 +164,14 @@
             <textarea
               id="questionInput"
               rows="1"
-              placeholder="আপনার ইসলামিক প্রশ্নটি লিখুন (বাংলা, Banglish বা English)..."
-              aria-label="আপনার ইসলামিক প্রশ্ন"
+              placeholder="আমার সাথে কথা বলুন অথবা যেকোনো ইসলামিক প্রশ্ন লিখুন..."
+              aria-label="আপনার বার্তা বা ইসলামিক প্রশ্ন"
             ></textarea>
-            <button type="button" class="voice-btn" id="voiceBtn" title="কণ্ঠে প্রশ্ন বলুন (বাংলা)">
+            <button type="button" class="voice-btn" id="voiceBtn" title="কণ্ঠে কথা বলুন (বাংলা)">
               🎙
             </button>
             <button type="submit" class="send-btn" id="sendBtn">
-              <span>উত্তর খুঁজুন</span> ➤
+              <span>পাঠান</span> ➤
             </button>
           </form>
           <div class="composer-footnote">
