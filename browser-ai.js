@@ -1228,9 +1228,8 @@
     'সাইয়্যিদুল ইস্তিগফার অর্থসহ বলো',
     'ঘুমানোর আগের দোয়া কী?',
     'খাওয়ার শুরু ও শেষের দোয়া বলো',
-    'আজকের নামাজের সময়সূচি দাও',
-    'আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?',
-    'একটা ইসলামিক কুইজ ধরো',
+    'সালাতে মনোযোগ বাড়ানোর উপায় কী?',
+    'তওবা করার সঠিক নিয়ম কী?',
   ];
 
   const MANDATORY_ANCHOR_STEMS = new Set(
@@ -1298,33 +1297,6 @@
       ask_team_url: `${SITE_URL}/ask.html`,
     });
 
-    // 0. Check if user is answering an active Islamic Quiz!
-    if (activeQuizId !== null && q.length <= 45 && !QUIZ_REQ_RE.test(q)) {
-      const qz = ISLAMIC_QUIZZES[activeQuizId];
-      if (qz && (/^(?:[কখগঘabcd1234১২৩৪])\b/i.test(q) || qz.options.some((opt) => q.includes(opt.slice(3).trim().slice(0, 6))) || qz.matchRe.test(q))) {
-        const isCorrect = qz.matchRe.test(q) || q.includes(qz.options[qz.ansIdx].slice(0, 2));
-        return makeChat(
-          isCorrect
-            ? `মাশাআল্লাহ${nameTag}! একদম সঠিক উত্তর দিয়েছেন! 🎉`
-            : `চেষ্টা করার জন্য ধন্যবাদ${nameTag}! উত্তরটি একটু ভিন্ন ছিল—`,
-          [qz.explain],
-          ['আরেকটা ইসলামিক কুইজ ধরো', 'মন ভালো করার একটা উপদেশ দাও', 'সালাতে মনোযোগ বাড়ানোর উপায় কী?']
-        );
-      }
-    }
-
-    // 0b. Start / Next Islamic Quiz
-    if (QUIZ_REQ_RE.test(q)) {
-      const nextIdx = activeQuizId !== null ? (activeQuizId + 1) % ISLAMIC_QUIZZES.length : (Array.isArray(history) ? Math.floor(history.length / 2) % ISLAMIC_QUIZZES.length : 0);
-      const qz = ISLAMIC_QUIZZES[nextIdx];
-      return makeChat(
-        `দারুণ${nameTag}! আপনার জন্য একটি ইসলামিক কুইজ:\n\n**প্রশ্ন:** ${qz.q}\n\n${qz.options.join('\n')}`,
-        ['নিচের অপশন থেকে ক্লিক করুন অথবা ক/খ/গ/ঘ লিখে উত্তর দিন!'],
-        qz.options,
-        { quiz_id: qz.id }
-      );
-    }
-
     // 0c. Live Prayer, Sehri & Iftar Schedule across Bangladesh
     if (PRAYER_TIME_QUERY_RE.test(q) && !FIQH_RULING_MARKER_RE.test(q)) {
       const cityObj = detectCityInText(q, userCity);
@@ -1391,9 +1363,9 @@
       const cObj = detectCityInText(mCity[1], 'dhaka');
       const sched = computePrayerSchedule(cObj);
       return makeChat(
-        `মাশাআল্লাহ${nameTag}! আপনি **${cObj.bn}** থেকে বলছেন জেনে খুব ভালো লাগলো। আমি এটি মনে রাখলাম!`,
-        [`প্রসঙ্গত, **${cObj.bn}**-এ পরবর্তী ওয়াক্ত **${sched.next_waqt_name}** শুরু হবে **${sched.next_waqt_time}** মিনিটে। আজ কী নিয়ে আলাপ করব?`],
-        [`${cObj.bn} জেলার আজকের নামাজের সময়সূচি`, 'একটা ইসলামিক কুইজ ধরো']
+        `মাশাআল্লাহ${nameTag}! আপনি **${cObj.bn}** থেকে বলছেন জেনে খুব ভালো লাগলো। আপনার যেকোনো ইসলামিক প্রশ্ন লিখুন, ইনশাআল্লাহ দলিলসহ উত্তর দেওয়ার চেষ্টা করব।`,
+        [],
+        ['সালাতে খুশু-খুযু বাড়ানোর উপায় কী?', 'তওবা কবুল হওয়ার শর্ত কী কী?']
       );
     }
 
@@ -2704,10 +2676,14 @@
         if (followUps.length >= 5) break;
       }
 
-      const ragContext = citedDocs.slice(0, 3).map((c, i) => ({
-        citation: `[${i + 1}] ${c.title} (${c.source_name}) — ${c.dawahx_url}`,
-        content: trimCleanly(c.answer_body, 1200),
-      }));
+      const ragContext = citedDocs.slice(0, 4).map((c, i) => {
+        const bestChunk = selectBestParagraphs(c, coreSet, expSet, 7, 2400).join('\n\n') || trimCleanly(c.answer_body, 2200);
+        const qHeader = c.question_context ? `প্রশ্ন/প্রেক্ষাপট: ${trimCleanly(c.question_context, 420)}\n` : '';
+        return {
+          citation: `[${i + 1}] ${c.clean_title || c.title} (${c.source_name}) — ${c.dawahx_url}`,
+          content: `${qHeader}উত্তর/বিস্তারিত:\n${bestChunk}`,
+        };
+      });
 
       const conversationalIntro = buildConversationalOpening(
         question,
