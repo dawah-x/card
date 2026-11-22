@@ -557,48 +557,73 @@
               ? 'grounded'
               : 'chat';
         try {
-          const cfRes = await fetch(`${detectedWorkerBase}/api/ai`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              question: q,
-              mode,
-              stream: true,
-              headline: resData.headline || '',
-              primary_verdict: hasRag ? resData.direct_answer || '' : '',
-              history: widgetHistory.slice(0, -2).slice(-6),
-              rag_context: hasRag ? resData.rag_context.slice(0, 4) : [],
-              evidences: Array.isArray(resData.evidences) ? resData.evidences.slice(0, 3) : [],
-            }),
-          });
-          if (cfRes.ok && cfRes.body && streamSlot) {
+          const basePayload = {
+            question: q,
+            mode,
+            stream: true,
+            headline: resData.headline || '',
+            primary_verdict: hasRag ? resData.direct_answer || '' : '',
+            history: widgetHistory.slice(0, -2).slice(-6),
+            rag_context: hasRag ? resData.rag_context.slice(0, 3) : [],
+            evidences: Array.isArray(resData.evidences) ? resData.evidences.slice(0, 3) : [],
+          };
+
+          const runWidgetStreamPass = async (payload, onTok) => {
+            const cfRes = await fetch(`${detectedWorkerBase}/api/ai`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+            });
+            if (!cfRes.ok || !cfRes.body) return;
             const reader = cfRes.body.getReader();
             const dec = new TextDecoder();
             let buf = '';
-            let out = '';
+            const handleLn = (ln) => {
+              const t = ln.trim();
+              if (!t.startsWith('data:')) return;
+              const p = t.slice(5).trim();
+              if (!p || p === '[DONE]') return;
+              try {
+                const j = JSON.parse(p);
+                if (j.token) onTok(j.token);
+              } catch (_) {}
+            };
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               buf += dec.decode(value, { stream: true });
               const lines = buf.split(/\r?\n/);
               buf = lines.pop() || '';
-              for (const ln of lines) {
-                const t = ln.trim();
-                if (!t.startsWith('data:')) continue;
-                const p = t.slice(5).trim();
-                if (p === '[DONE]') continue;
-                try {
-                  const j = JSON.parse(p);
-                  if (j.token) {
-                    out += j.token;
-                    streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
-                    msgsBox.scrollTop = msgsBox.scrollHeight;
-                  }
-                } catch (_) {}
-              }
+              for (const ln of lines) handleLn(ln);
             }
+            buf += dec.decode();
+            for (const ln of buf.split(/\r?\n/)) {
+              if (ln.trim()) handleLn(ln);
+            }
+          };
+
+          if (streamSlot) {
+            let out = '';
+            await runWidgetStreamPass(basePayload, (tok) => {
+              out += tok;
+              streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
+              msgsBox.scrollTop = msgsBox.scrollHeight;
+            });
+
+            if (out.trim().length >= 90 && !/[।?!.)”'"\]*»﴾]\s*$/u.test(out.trim())) {
+              await runWidgetStreamPass(
+                { ...basePayload, mode: 'continue', partial_answer: out },
+                (tok) => {
+                  const sp = out && !/\s$/.test(out) && !/^[\s।?!.,:;)\]”'"]/u.test(tok) ? ' ' : '';
+                  out += sp + tok;
+                  streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
+                  msgsBox.scrollTop = msgsBox.scrollHeight;
+                }
+              );
+            }
+
             if (out.trim() && widgetHistory.length) {
-              widgetHistory[widgetHistory.length - 1].text = out.trim().slice(0, 900);
+              widgetHistory[widgetHistory.length - 1].text = out.trim().slice(0, 1200);
             }
           }
         } catch (_) {}

@@ -2488,6 +2488,13 @@ mark.reader-hl {
   .header-actions {
     gap: 6px;
   }
+  .prayer-pill-btn {
+    max-width: 185px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 5px 10px;
+    font-size: 12px;
+  }
   .hdr-icon-btn {
     width: 36px;
     height: 36px;
