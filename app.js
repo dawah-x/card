@@ -122,28 +122,61 @@
     } catch (_) {}
   }
 
-  // Client-side 7-day LRU cache for grounded answers (saves Cloudflare Neurons & gives <5ms repeat answers)
+  // Client-side 7-day LRU cache for grounded & web-searched answers
   function makeLocalCacheKey(question, primaryKey) {
-    if (!primaryKey) return '';
     const normQ = String(question || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    return `${primaryKey}::${normQ}`;
+    if (!normQ) return '';
+    return `${primaryKey || 'WEB'}::${normQ}`;
   }
 
-  function getCachedGroundedAnswer(question, primaryKey) {
+  function getCachedAnswerEntry(question, primaryKey) {
     const k = makeLocalCacheKey(question, primaryKey);
-    if (!k) return '';
+    if (!k) return null;
     const store = loadStoredJson(AI_CACHE_KEY, []);
     const now = Date.now();
     const hit = store.find((it) => it && it.k === k && now - (it.t || 0) < 7 * 86400 * 1000);
-    return hit && hit.v && isCompleteSentence(hit.v) ? hit.v : '';
+    return hit && hit.v && isCompleteSentence(hit.v) ? hit : null;
   }
 
-  function putCachedGroundedAnswer(question, primaryKey, answerText) {
+  function putCachedAnswerEntry(question, primaryKey, answerText, webSources = []) {
     const k = makeLocalCacheKey(question, primaryKey);
     if (!k || !isCompleteSentence(answerText) || answerText.length < 90) return;
     const store = loadStoredJson(AI_CACHE_KEY, []).filter((it) => it && it.k !== k);
-    store.unshift({ k, v: answerText, t: Date.now() });
-    saveStoredJson(AI_CACHE_KEY, store.slice(0, 40));
+    store.unshift({
+      k,
+      v: answerText,
+      w: Array.isArray(webSources) ? webSources.slice(0, 5) : [],
+      t: Date.now(),
+    });
+    saveStoredJson(AI_CACHE_KEY, store.slice(0, 45));
+  }
+
+  function renderWebSourcesHtml(webSources) {
+    if (!Array.isArray(webSources) || webSources.length === 0) return '';
+    const cards = webSources
+      .map(
+        (ws, idx) => `
+        <div class="source-ref-card">
+          <div class="src-top-row">
+            <span class="src-rank-badge">#${toBnNum(ws.rank || idx + 1)}</span>
+            <div class="src-title-text">${escHtml(ws.title || ws.domain || 'ওয়েব সূত্র')}</div>
+          </div>
+          <div class="src-submeta">
+            <span>🌐 ${escHtml(ws.domain || 'নির্ভরযোগ্য ওয়েবসাইট')}</span>
+          </div>
+          <div class="src-btn-row">
+            <a href="${escHtml(ws.url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
+              ওয়েবসাইটে দেখুন ↗
+            </a>
+          </div>
+        </div>`
+      )
+      .join('');
+    return `
+      <div class="sources-section">
+        <div class="sec-heading">🌐 অন্যান্য ওয়েবসাইট ও তথ্যসূত্র (${toBnNum(webSources.length)}টি)</div>
+        <div class="sources-grid ${webSources.length >= 2 ? 'multi-src' : ''}">${cards}</div>
+      </div>`;
   }
 
   function abortActiveStream() {
@@ -735,7 +768,8 @@
     }
     const mainCopyBtn = answerCard?.querySelector('.card-actions-bar [data-copy-answer]');
     if (mainCopyBtn) {
-      const srcLine = data.sources?.[0]?.dawahx_url ? `\n\nসূত্র: ${data.sources[0].dawahx_url}` : '';
+      const refUrl = data.sources?.[0]?.dawahx_url || data.web_sources?.[0]?.url || '';
+      const srcLine = refUrl ? `\n\nসূত্র: ${refUrl}` : '';
       mainCopyBtn.setAttribute(
         'data-copy-answer',
         `${data.headline ? data.headline + '\n\n' : ''}${generatedText}${srcLine}`
@@ -743,8 +777,8 @@
     }
   }
 
-  // Stream a single SSE pass with AbortController & UTF-8 tail flush
-  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken) {
+  // Stream a single SSE pass with AbortController, web_sources metadata & UTF-8 tail flush
+  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken, onMeta) {
     const res = await fetch(aiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -769,6 +803,9 @@
         if (evt.error) {
           hadStreamError = true;
           return;
+        }
+        if (Array.isArray(evt.web_sources) && typeof onMeta === 'function') {
+          onMeta({ web_sources: evt.web_sources });
         }
         if (typeof evt.token === 'string' && evt.token) {
           passText += evt.token;
@@ -798,29 +835,34 @@
     if (!targetEl || data.is_deterministic_tool) return;
 
     const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
-    const isBubble = Boolean(data.is_chat || data.status === 'conversational' || data.status === 'not_found');
-    const mode =
-      data.status === 'not_found'
-        ? 'not_found_islamic'
-        : hasRag && !data.is_chat
-          ? 'grounded'
-          : 'chat';
+    const isWebFallback = data.status === 'web_fallback' || data.status === 'not_found';
+    const isBubble = Boolean((data.is_chat || data.status === 'conversational') && !isWebFallback);
+    const mode = isWebFallback ? 'web_search' : hasRag && !data.is_chat ? 'grounded' : 'chat';
 
     const fallbackHtml = targetEl.innerHTML;
+    const webSourcesSlot = answerCard?.querySelector('[data-web-sources-slot]');
+    const headTagLabel = isWebFallback ? 'ওয়েব ও প্রামাণ্য সূত্র' : 'DAWAH X দলিলভিত্তিক';
+    const doneHeadLabel = isWebFallback
+      ? '✓ নির্ভরযোগ্য ওয়েবসাইট ও প্রামাণ্য সূত্রের আলোকে উত্তর'
+      : '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
 
     // 1. Instant Client Cache Hit (0 network requests & 0 Cloudflare Neurons!)
-    if (mode === 'grounded' && data.primary_key && !(historySnapshot && historySnapshot.length && question.length <= 50)) {
-      const cached = getCachedGroundedAnswer(question, data.primary_key);
-      if (cached) {
+    if ((mode === 'grounded' || mode === 'web_search') && !(historySnapshot && historySnapshot.length && question.length <= 50)) {
+      const cachedHit = getCachedAnswerEntry(question, data.primary_key);
+      if (cachedHit) {
         targetEl.innerHTML =
           `<div class="ai-stream-box">` +
-          `<div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div>` +
-          `<div class="ai-stream-body">${formatRichText(cached)}</div>` +
+          `<div class="ai-stream-head"><span>${doneHeadLabel}</span><small>${headTagLabel}</small></div>` +
+          `<div class="ai-stream-body">${formatRichText(cachedHit.v)}</div>` +
           `</div>` +
-          (fallbackHtml.trim()
+          (!isWebFallback && fallbackHtml.trim()
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
             : '');
-        applyGeneratedAnswerToCard(answerCard, data, cached);
+        if (Array.isArray(cachedHit.w) && cachedHit.w.length > 0) {
+          data.web_sources = cachedHit.w;
+          if (webSourcesSlot) webSourcesSlot.innerHTML = renderWebSourcesHtml(cachedHit.w);
+        }
+        applyGeneratedAnswerToCard(answerCard, data, cachedHit.v);
         return;
       }
     }
@@ -841,18 +883,21 @@
       targetEl.innerHTML = `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>`;
       streamBody = targetEl.querySelector('[data-stream-body]');
     } else {
+      const loadingLabel = isWebFallback
+        ? '🌐 অন্যান্য নির্ভরযোগ্য ওয়েবসাইট থেকে উত্তর খোঁজা হচ্ছে...'
+        : '✦ বিস্তারিত ব্যাখ্যা তৈরি হচ্ছে...';
       targetEl.innerHTML =
         `<div class="ai-stream-box">` +
         `<div class="ai-stream-head">` +
-        `<span data-stream-status>✦ বিস্তারিত ব্যাখ্যা তৈরি হচ্ছে...</span>` +
+        `<span data-stream-status>${loadingLabel}</span>` +
         `<div class="stream-head-right">` +
         `<button type="button" class="stream-stop-btn" data-stop-stream="1">⏹ থামান</button>` +
-        `<small>DAWAH X দলিলভিত্তিক</small>` +
+        `<small>${headTagLabel}</small>` +
         `</div>` +
         `</div>` +
         `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
         `</div>` +
-        (fallbackHtml.trim()
+        (!isWebFallback && fallbackHtml.trim()
           ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
           : '');
       streamBody = targetEl.querySelector('[data-stream-body]');
@@ -861,6 +906,15 @@
     }
 
     let fullText = '';
+    let capturedWebSources = [];
+    const handleMeta = (meta) => {
+      if (Array.isArray(meta?.web_sources) && meta.web_sources.length > 0) {
+        capturedWebSources = meta.web_sources;
+        data.web_sources = meta.web_sources;
+        if (webSourcesSlot) webSourcesSlot.innerHTML = renderWebSourcesHtml(meta.web_sources);
+      }
+    };
+
     try {
       let rafScheduled = false;
 
@@ -901,17 +955,29 @@
 
       let firstPass;
       try {
-        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
-          fullText += tok;
-          onChunk();
-        });
+        firstPass = await streamCloudflarePass(
+          activeAiUrl,
+          basePayload,
+          signal,
+          (tok) => {
+            fullText += tok;
+            onChunk();
+          },
+          handleMeta
+        );
       } catch (primaryErr) {
         if (backupAiUrl && !fullText && !(signal && signal.aborted)) {
           activeAiUrl = backupAiUrl;
-          firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
-            fullText += tok;
-            onChunk();
-          });
+          firstPass = await streamCloudflarePass(
+            activeAiUrl,
+            basePayload,
+            signal,
+            (tok) => {
+              fullText += tok;
+              onChunk();
+            },
+            handleMeta
+          );
         } else {
           throw primaryErr;
         }
@@ -919,10 +985,16 @@
 
       if (firstPass.hadStreamError && !fullText && backupAiUrl && activeAiUrl !== backupAiUrl && !(signal && signal.aborted)) {
         activeAiUrl = backupAiUrl;
-        firstPass = await streamCloudflarePass(activeAiUrl, basePayload, signal, (tok) => {
-          fullText += tok;
-          onChunk();
-        });
+        firstPass = await streamCloudflarePass(
+          activeAiUrl,
+          basePayload,
+          signal,
+          (tok) => {
+            fullText += tok;
+            onChunk();
+          },
+          handleMeta
+        );
       }
 
       if (firstPass.hadStreamError && fullText.trim().length < 140) {
@@ -957,17 +1029,17 @@
       const cleaned = fullText.trim();
       if (cleaned && isCompleteSentence(cleaned)) {
         flushRender(true);
-        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+        if (statusSpan) statusSpan.textContent = doneHeadLabel;
         applyGeneratedAnswerToCard(answerCard, data, cleaned);
-        if (mode === 'grounded' && data.primary_key) {
-          putCachedGroundedAnswer(question, data.primary_key, cleaned);
+        if (mode === 'grounded' || mode === 'web_search') {
+          putCachedAnswerEntry(question, data.primary_key, cleaned, capturedWebSources);
         }
         return;
       }
       if (cleaned.length >= 160) {
         fullText = cleaned + '।';
         flushRender(true);
-        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+        if (statusSpan) statusSpan.textContent = doneHeadLabel;
         applyGeneratedAnswerToCard(answerCard, data, fullText);
         return;
       }
@@ -978,7 +1050,7 @@
       if (err && err.name === 'AbortError' && fullText.trim().length >= 100) {
         const partialDone = isCompleteSentence(fullText) ? fullText.trim() : fullText.trim() + '।';
         if (streamBody) streamBody.innerHTML = formatRichText(partialDone);
-        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিশ্লেষণ';
+        if (statusSpan) statusSpan.textContent = doneHeadLabel;
         applyGeneratedAnswerToCard(answerCard, data, partialDone);
         return;
       }
@@ -994,27 +1066,34 @@
     const card = document.createElement('article');
     card.className = 'msg-ai-card';
 
+    const isWebFallback = data.status === 'web_fallback' || data.status === 'not_found';
+
     let statusBadgeHtml = '';
-    if (data.status === 'not_found') {
-      statusBadgeHtml = `<span class="badge-notfound">⚠ সরাসরি উত্তর পাওয়া যায়নি</span>`;
+    if (isWebFallback) {
+      statusBadgeHtml = `<span class="badge-websource">🌐 ওয়েব ও প্রামাণ্য সূত্রভিত্তিক উত্তর</span>`;
     } else if (data.status === 'conversational') {
       statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X AI</span>`;
     } else {
-      statusBadgeHtml = `<span class="badge-verified">✓ যাচাইকৃত দলিলভিত্তিক উত্তর</span>`;
+      statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X যাচাইকৃত দলিলভিত্তিক উত্তর</span>`;
     }
 
-    const srcBadgeHtml = data.primary_source_name
-      ? `<span class="badge-source">${escHtml(data.primary_source_name)}</span>`
-      : '';
+    const srcBadgeHtml =
+      data.primary_source_name && !isWebFallback
+        ? `<span class="badge-source">${escHtml(data.primary_source_name)}</span>`
+        : '';
 
     const rawExplanationHtml = (data.explanation_paragraphs || [])
       .map((p) => `<p>${formatRichText(p)}</p>`)
       .join('');
+    const headTitle = isWebFallback
+      ? '✓ নির্ভরযোগ্য ওয়েবসাইট ও প্রামাণ্য সূত্রের আলোকে উত্তর'
+      : '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
+    const headSub = isWebFallback ? 'ওয়েব ও প্রামাণ্য সূত্র' : 'DAWAH X দলিলভিত্তিক';
     const explanationHtml = data.ai_generated
-      ? data.is_chat || data.status === 'conversational' || data.status === 'not_found'
+      ? (data.is_chat || data.status === 'conversational') && !isWebFallback
         ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
-        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
-          (rawExplanationHtml
+        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>${headTitle}</span><small>${headSub}</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
+          (!isWebFallback && rawExplanationHtml
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${rawExplanationHtml}</details>`
             : '')
       : rawExplanationHtml;
@@ -1100,7 +1179,7 @@
     }
 
     // Conversational / Tool Bubble Mode
-    if (data.is_chat || data.status === 'conversational' || data.status === 'not_found') {
+    if ((data.is_chat || data.status === 'conversational') && !isWebFallback) {
       const wrap = document.createElement('article');
       wrap.className = 'msg-ai-chat';
 
@@ -1174,18 +1253,27 @@
         </div>`
       : '';
 
+    const primaryRefUrl =
+      data.primary_url ||
+      (Array.isArray(data.web_sources) && data.web_sources[0] && data.web_sources[0].url) ||
+      '';
     const plainCopyText = [
       `প্রশ্ন: ${data.query}`,
-      `উত্তর (${data.primary_source_name || 'DAWAH X'}): ${data.ai_generated || data.direct_answer}`,
+      `উত্তর (${data.primary_source_name || 'DAWAH X AI'}): ${data.ai_generated || data.direct_answer}`,
       ...(data.ai_generated ? [] : data.explanation_paragraphs || []),
-      data.primary_url ? `সূত্র: ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
+      primaryRefUrl ? `সূত্র: ${primaryRefUrl}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
     ].join('\n\n');
 
-    const ttsFullText = [data.headline, data.ai_generated || data.direct_answer, ...(data.ai_generated ? [] : data.explanation_paragraphs || [])].join('। ');
+    const ttsFullText = [data.headline, data.ai_generated || data.direct_answer, ...(data.ai_generated ? [] : data.explanation_paragraphs || [])].filter(Boolean).join('। ');
     const isBookmarked = data.primary_key && loadStoredJson(BOOKMARKS_KEY, []).some((b) => b.key === data.primary_key);
     const bookmarkBtnHtml = data.primary_key
       ? `<button type="button" class="mini-btn ${isBookmarked ? 'bookmarked' : ''}" data-bookmark-key="${escHtml(data.primary_key)}" data-bookmark-title="${escHtml(data.headline)}">${isBookmarked ? '✓ সংরক্ষিত' : '🔖 সংরক্ষণ'}</button>`
       : '';
+
+    const directVerdictBlock =
+      data.direct_answer && data.direct_answer.trim()
+        ? `<div class="ai-direct-verdict"><strong class="verdict-lbl">মূল সিদ্ধান্ত:</strong><span>${formatRichText(data.direct_answer)}</span></div>`
+        : '';
 
     card.innerHTML = `
       <div class="ai-meta-top">
@@ -1194,11 +1282,9 @@
       </div>
       <h3 class="ai-headline">${escHtml(data.headline)}</h3>
       ${scenarioHtml}
-      <div class="ai-direct-verdict">
-        <strong class="verdict-lbl">মূল সিদ্ধান্ত:</strong>
-        <span>${formatRichText(data.direct_answer)}</span>
-      </div>
+      ${directVerdictBlock}
       <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
+      <div data-web-sources-slot>${renderWebSourcesHtml(data.web_sources)}</div>
       ${seriesHtml}
       ${dalilHtml}
       ${sourcesHtml}
