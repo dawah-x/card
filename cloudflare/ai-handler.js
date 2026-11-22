@@ -1,12 +1,13 @@
 /**
- * DAWAH X AI — Strict DAWAH X-Exclusive Cloudflare Workers AI Engine (v15.0)
+ * DAWAH X AI — Strict DAWAH X-Exclusive Cloudflare Workers AI Engine (v17.0)
  *
  * Strictly answers ONLY from the verified DAWAH X website corpus (https://ebrahim-ead.github.io/DAWAH-X/).
  * Never fetches, cites, or synthesizes answers from any external website or outside source.
  * Includes:
- *  1) Global Cloudflare Edge Cache (`caches.default`, v15 namespace) — 0 Neurons & ~15ms on repeat grounded queries
- *  2) Neuron-smart 4-model cascade + optional zero-cost Gemini / Groq secret failover
- *  3) Seamless `continue` mode so DAWAH X answers never cut off mid-sentence
+ *  1) Anti-repetition sampling (`repetition_penalty: 1.15`, `frequency_penalty: 0.35`, `temperature: 0.28`)
+ *  2) Real-time SSE sentence-loop detector & deduplicator (prevents LLM repetition loops)
+ *  3) Global Cloudflare Edge Cache (`caches.default`, v17 namespace) — 0 Neurons & ~15ms on repeat grounded queries
+ *  4) Neuron-smart 4-model cascade + optional zero-cost Gemini / Groq secret failover
  */
 
 export const CORS_HEADERS = {
@@ -48,6 +49,7 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
+    version: '17.0',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
@@ -57,6 +59,7 @@ export function handleHealth(env) {
     ],
     dawahx_only: true,
     web_search: false,
+    anti_repetition: true,
     edge_cache: true,
     streaming: true,
     strict_rag: true,
@@ -80,6 +83,69 @@ function getDhakaDateTimeSummary() {
   }
 }
 
+export function normalizeSentenceForDedup(s) {
+  return String(s || '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[‘’'ʼ`ʻ"“”]/g, '')
+    .replace(/[ী]/g, 'ি')
+    .replace(/[ূ]/g, 'ু')
+    .replace(/[ছশষ]/g, 'স')
+    .replace(/[ণ]/g, 'ন')
+    .replace(/[^\p{L}\p{M}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+export function deduplicateAnswerSentences(rawText) {
+  let text = String(rawText || '')
+    // Repair any accidentally spaced Bengali combining marks
+    .replace(/([\u0995-\u09B9\u09DC-\u09DF])\s+([\u0981-\u0983\u09BC\u09BE-\u09CD\u09D7])/gu, '$1$2')
+    // Strip any echoed continuation meta-instruction
+    .replace(/ঠিক\s*যেখান\s*থেকে\s*থেমেছে[^।\n:]*[:।]?\s*/gu, '')
+    .trim();
+
+  if (!text) return { text: '', hadLoop: false };
+
+  // Split preserving sentence terminators & newlines
+  const segments = text.match(/[^।?!\n]+[।?!]*|\n+/gu) || [text];
+  const seen = [];
+  const kept = [];
+  let hadLoop = false;
+
+  for (const seg of segments) {
+    if (/^\n+$/.test(seg)) {
+      kept.push(seg);
+      continue;
+    }
+    const norm = normalizeSentenceForDedup(seg);
+    if (norm.length >= 22) {
+      const isDup = seen.some((prev) => {
+        if (prev === norm) return true;
+        if (Math.min(prev.length, norm.length) >= 30 && (prev.includes(norm) || norm.includes(prev))) {
+          return true;
+        }
+        return false;
+      });
+      if (isDup) {
+        hadLoop = true;
+        break; // Stop immediately at the onset of a repetition loop
+      }
+      seen.push(norm);
+    }
+    kept.push(seg);
+  }
+
+  let out = kept.join('').trim();
+  if (hadLoop) {
+    // Ensure we end cleanly on the last complete sentence terminator
+    const lastTerm = Math.max(out.lastIndexOf('।'), out.lastIndexOf('?'), out.lastIndexOf('!'));
+    if (lastTerm >= 40) {
+      out = out.slice(0, lastTerm + 1).trim();
+    }
+  }
+  return { text: out, hadLoop };
+}
+
 function isSentenceComplete(txt) {
   const t = String(txt || '').trim();
   return t.length >= 60 && /[।?!.)”'"\]*»﴾]\s*$/u.test(t);
@@ -92,10 +158,10 @@ async function computeEdgeCacheRequest(mode, question, headline, primaryCite) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    const rawKey = `v16-dawahx-only|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
+    const rawKey = `v17-dawahx-only|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return new Request(`https://cache.dawahx.internal/ai-v16/${hex}`, { method: 'GET' });
+    return new Request(`https://cache.dawahx.internal/ai-v17/${hex}`, { method: 'GET' });
   } catch (_) {
     return null;
   }
@@ -131,7 +197,7 @@ function buildMessages({ question, mode, history, ragContext, evidences, headlin
   const safeEvidences = Array.isArray(evidences) ? evidences.slice(0, 4) : [];
   const cleanHeadline = String(headline || '').trim().slice(0, 260);
   const cleanVerdict = String(primaryVerdict || '').trim().slice(0, 900);
-  const cleanPartial = String(partialAnswer || '').trim().slice(-1400);
+  const cleanPartial = String(partialAnswer || '').trim().slice(-1100);
 
   let inheritedContext = '';
   if (safeRag.length === 0 && safeHistory.length > 0) {
@@ -159,31 +225,30 @@ function buildMessages({ question, mode, history, ragContext, evidences, headlin
 
   let systemPrompt = '';
   let userContent = '';
-  let temperature = 0.2;
-  let maxTokens = 2200;
+  let temperature = 0.28;
+  let maxTokens = 1850;
 
   if (mode === 'continue' && cleanPartial) {
-    temperature = 0.1;
-    maxTokens = 1400;
+    temperature = 0.25;
+    maxTokens = 650;
     systemPrompt =
-      'তুমি "DAWAH X AI"। DAWAH X-এর দলিলের আলোকে লেখা একটি উত্তরের শেষ অংশটুকু টোকেন সীমার কারণে বাক্যের মাঝপথে থেমে গেছে।\n' +
-      'তোমার একমাত্র কাজ হলো আগের লেখা পুনরাবৃত্তি না করে ঠিক যেখানে থেমেছে সেখান থেকে শুধুমাত্র প্রদত্ত DAWAH X দলিলের আলোকে বাকি অংশটুকু যুক্ত করে পরিপূর্ণ বাক্যে উত্তরটি শেষ করা। বাইরের কোনো ওয়েবসাইট বা মনগড়া তথ্য যোগ করবে না এবং সরাসরি পরের শব্দ থেকে শুরু করবে।';
-    const firstRagBody = safeRag.length > 0 ? String(safeRag[0].content || safeRag[0].excerpt || '').slice(0, 2000) : '';
+      'তুমি "DAWAH X AI"। নিচের উত্তরের শেষ বাক্যটি অসম্পূর্ণ রয়েছে।\n' +
+      'নিয়ম:\n' +
+      '১. কোনো ভূমিকা, নির্দেশনা বা আগের বাক্য পুনরাবৃত্তি না করে শুধুমাত্র শেষ অসমাপ্ত বাক্যটুকু ২–৩ বাক্যের মধ্যে অর্থপূর্ণভাবে শেষ করো।\n' +
+      '২. কখনোই একই কথা বারবার লিখবে না এবং বাইরের কোনো ওয়েবসাইটের তথ্য যোগ করবে না।';
+    const firstRagBody = safeRag.length > 0 ? String(safeRag[0].content || safeRag[0].excerpt || '').slice(0, 1600) : '';
     const refText = firstRagBody ? `\n\nDAWAH X মূল দলিল:\n${firstRagBody}` : '';
-    userContent =
-      `মূল প্রশ্ন: ${cleanQ}${refText}\n\n` +
-      `এ পর্যন্ত লেখা অসমাপ্ত অংশ:\n${cleanPartial}\n\n` +
-      `ঠিক যেখানে থেমেছে সেখান থেকে বাকি অংশটুকু লিখে সম্পূর্ণ বাক্যে শেষ করো:`;
+    userContent = `প্রশ্ন: ${cleanQ}${refText}\n\nঅসমাপ্ত উত্তর:\n${cleanPartial}`;
   } else if (mode === 'grounded' && safeRag.length > 0) {
-    temperature = 0.1;
-    maxTokens = 2800;
+    temperature = 0.28;
+    maxTokens = 1850;
     systemPrompt =
       'তুমি "DAWAH X AI" — শুধুমাত্র DAWAH X ওয়েবসাইট (https://ebrahim-ead.github.io/DAWAH-X/)-এর যাচাইকৃত ফতোয়া, প্রবন্ধ ও দলিলের আলোকে উত্তর প্রদানকারী ইসলামিক এআই।\n\n' +
       'কঠোর নীতিমালা (অবশ্যই পালনীয়):\n' +
       '১. শুধুমাত্র DAWAH X নির্ভরতা: নিচে প্রদত্ত DAWAH X-এর উদ্ধৃতি, মূল সিদ্ধান্ত ও দলিলের বাইরে অন্য কোনো ওয়েবসাইট, বাইরের সূত্র বা নিজস্ব অনুমান থেকে কোনো তথ্য, ফতোয়া বা হাদীস নম্বর কখনোই যোগ করবে না।\n' +
       '২. সরাসরি মূল উত্তর দিয়ে শুরু: প্রথম অনুচ্ছেদেই প্রশ্নকারীর নির্দিষ্ট প্রশ্নের সরাসরি ও স্পষ্ট সিদ্ধান্ত জানাবে।\n' +
       '৩. সুসংহত ব্যাখ্যা ও দলিল: সংক্ষিপ্ত অনুচ্ছেদ বা • বুলেট পয়েন্টে শর্তাবলি ও কুরআন-হাদীসের উদ্ধৃত দলিল তুলে ধরবে এবং পাশে [১], [২] সূত্র নম্বর উল্লেখ করবে।\n' +
-      '৪. পরিপূর্ণ সমাপ্তি ও বিশুদ্ধ বাংলা: উত্তরটি অবশ্যই পরিপূর্ণ বাক্যে শেষ করবে—কখনোই বাক্য অসমাপ্ত রেখে থামবে না। বিশুদ্ধ বাংলা লিপি ব্যবহার করবে (কাঁচা HTML ট্যাগ বা অপ্রয়োজনীয় # চিহ্ন এড়িয়ে চলবে)। গুরুত্বপূর্ণ শব্দ **বোল্ড** করতে পারো।';
+      '৪. পুনরাবৃত্তি সম্পূর্ণ নিষিদ্ধ: একই বাক্য বা একই কথা কখনোই দুইবার লিখবে না। মূল উত্তর ও দলিল দেওয়া শেষ হলে সাথে সাথে পরিপূর্ণ বাক্যে উত্তর সমাপ্ত করবে। বিশুদ্ধ বাংলা লিপি ব্যবহার করবে।';
 
     const ctxBlocks = safeRag
       .map((c, idx) => {
@@ -212,10 +277,10 @@ function buildMessages({ question, mode, history, ragContext, evidences, headlin
       `প্রশ্ন:\n${cleanQ}\n\n` +
       `${verdictHeader}` +
       `DAWAH X ওয়েবসাইট থেকে প্রাপ্ত প্রাসঙ্গিক ফতোয়া ও দলিল:\n${ctxBlocks}${dalilBlock}\n\n` +
-      `শুধুমাত্র উপরের DAWAH X দলিল ও মূল সিদ্ধান্তের আলোকে প্রশ্নটির সরাসরি, পরিপূর্ণ ও সুসংহত উত্তর লেখো (অন্য কোনো ওয়েবসাইটের তথ্য যোগ করবে না এবং সম্পূর্ণ বাক্যে শেষ করবে):`;
+      `শুধুমাত্র উপরের DAWAH X দলিল ও মূল সিদ্ধান্তের আলোকে প্রশ্নটির সরাসরি, বাহুল্যবর্জিত ও সুসংহত উত্তর লেখো (কোনো বাক্য পুনরাবৃত্তি করবে না এবং সম্পূর্ণ বাক্যে শেষ করবে):`;
   } else if (mode === 'not_found_islamic') {
-    temperature = 0.15;
-    maxTokens = 450;
+    temperature = 0.25;
+    maxTokens = 400;
     systemPrompt =
       'তুমি "DAWAH X AI"। ব্যবহারকারী এমন একটি প্রশ্ন করেছেন যার সরাসরি উত্তর DAWAH X ওয়েবসাইটের বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি।\n' +
       'কঠোর নিয়ম:\n' +
@@ -226,15 +291,15 @@ function buildMessages({ question, mode, history, ragContext, evidences, headlin
     userContent = `ব্যবহারকারীর প্রশ্ন: ${cleanQ}`;
   } else {
     const dhakaNow = getDhakaDateTimeSummary();
-    temperature = 0.25;
-    maxTokens = 1200;
+    temperature = 0.3;
+    maxTokens = 1100;
     systemPrompt =
       'তুমি "DAWAH X AI" — শুধুমাত্র DAWAH X ওয়েবসাইট (https://ebrahim-ead.github.io/DAWAH-X/) ভিত্তিক ইসলামিক প্রশ্নোত্তর সহকারী।\n' +
       (dhakaNow ? `বর্তমান বাংলাদেশ সময় ও তারিখ (Asia/Dhaka): ${dhakaNow}।\n` : '') +
       'কঠোর নিয়মাবলি:\n' +
       '১. ব্যবহারকারী সালাম দিলে বা কুশল বিনিময় করলে আন্তরিকভাবে সালামের উত্তর ও কুশল বিনিময় করবে।\n' +
       '২. যদি নিচে "পূর্ববর্তী DAWAH X উত্তরের সূত্র ও প্রেক্ষাপট" দেওয়া থাকে এবং ব্যবহারকারী সেটি সহজ করে বোঝাতে, সংক্ষেপে বলতে বা অনুবাদ করতে বলেন, তবে শুধুমাত্র সেই পূর্ববর্তী DAWAH X উত্তরের তথ্যের ভেতরে থেকেই তা ব্যাখ্যা বা অনুবাদ করবে।\n' +
-      '৩. DAWAH X ওয়েবসাইটের বাইরে অন্য কোনো ওয়েবসাইট বা বাইরের উৎস থেকে কোনো ইসলামিক ফতোয়া, মাসআলা বা বাহ্যিক তথ্য কখনোই প্রদান করবে না; DAWAH X প্রেক্ষাপট না থাকলে বিনীতভাবে জানাবে যে তুমি শুধুমাত্র DAWAH X ওয়েবসাইটের সংগ্রহ থেকেই উত্তর দিয়ে থাকো। সম্পূর্ণ বাক্যে শেষ করবে।';
+      '৩. DAWAH X ওয়েবসাইটের বাইরে অন্য কোনো ওয়েবসাইট বা বাইরের উৎস থেকে কোনো ইসলামিক ফতোয়া, মাসআলা বা বাহ্যিক তথ্য কখনোই প্রদান করবে না; DAWAH X প্রেক্ষাপট না থাকলে বিনীতভাবে জানাবে যে তুমি শুধুমাত্র DAWAH X ওয়েবসাইটের সংগ্রহ থেকেই উত্তর দিয়ে থাকো। কোনো বাক্য পুনরাবৃত্তি না করে সম্পূর্ণ বাক্যে শেষ করবে।';
 
     userContent = inheritedContext
       ? `পূর্ববর্তী DAWAH X উত্তরের সূত্র ও প্রেক্ষাপট:\n${inheritedContext}\n\nব্যবহারকারীর বর্তমান বার্তা:\n${cleanQ}`
@@ -290,12 +355,13 @@ function createNormalizedSSEStream(rawStream, modelUsed, onComplete) {
   let buffer = '';
   let accumulated = '';
   let hadError = false;
+  let stoppedByLoopGuard = false;
 
   return new ReadableStream({
     async start(controller) {
       const reader = rawStream.getReader();
       try {
-        while (true) {
+        while (!stoppedByLoopGuard) {
           const { done, value } = await reader.read();
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
@@ -311,7 +377,23 @@ function createNormalizedSSEStream(rawStream, modelUsed, onComplete) {
               const parsed = JSON.parse(payload);
               const token = extractTokenFromChunkObj(parsed);
               if (token) {
-                accumulated += token;
+                const candidate = accumulated + token;
+                // Check for sentence-level repetition loop whenever sentence punctuation arrives
+                if (/[।?!\n]/.test(token) && candidate.length >= 120) {
+                  const check = deduplicateAnswerSentences(candidate);
+                  if (check.hadLoop) {
+                    accumulated = check.text;
+                    stoppedByLoopGuard = true;
+                    controller.enqueue(
+                      encoder.encode(`data: ${JSON.stringify({ replace_text: accumulated, model: modelUsed })}\n\n`)
+                    );
+                    try {
+                      await reader.cancel();
+                    } catch (_) {}
+                    break;
+                  }
+                }
+                accumulated = candidate;
                 controller.enqueue(
                   encoder.encode(`data: ${JSON.stringify({ token, model: modelUsed })}\n\n`)
                 );
@@ -320,29 +402,39 @@ function createNormalizedSSEStream(rawStream, modelUsed, onComplete) {
           }
         }
 
-        buffer += decoder.decode();
-        for (const rawTail of buffer.split(/\r?\n/)) {
-          const line = rawTail.trim();
-          if (!line.startsWith('data:')) continue;
-          const tail = line.slice(5).trim();
-          if (tail && tail !== '[DONE]') {
-            try {
-              const parsed = JSON.parse(tail);
-              const token = extractTokenFromChunkObj(parsed);
-              if (token) {
-                accumulated += token;
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ token, model: modelUsed })}\n\n`)
-                );
-              }
-            } catch (_) {}
+        if (!stoppedByLoopGuard) {
+          buffer += decoder.decode();
+          for (const rawTail of buffer.split(/\r?\n/)) {
+            const line = rawTail.trim();
+            if (!line.startsWith('data:')) continue;
+            const tail = line.slice(5).trim();
+            if (tail && tail !== '[DONE]') {
+              try {
+                const parsed = JSON.parse(tail);
+                const token = extractTokenFromChunkObj(parsed);
+                if (token) {
+                  accumulated += token;
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ token, model: modelUsed })}\n\n`)
+                  );
+                }
+              } catch (_) {}
+            }
           }
+        }
+
+        const finalCheck = deduplicateAnswerSentences(accumulated);
+        if (finalCheck.hadLoop && finalCheck.text !== accumulated.trim()) {
+          accumulated = finalCheck.text;
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ replace_text: accumulated, model: modelUsed })}\n\n`)
+          );
         }
 
         controller.enqueue(encoder.encode('data: [DONE]\n\n'));
         controller.close();
         if (!hadError && typeof onComplete === 'function') {
-          onComplete(accumulated.trim());
+          onComplete(finalCheck.text);
         }
       } catch (err) {
         hadError = true;
@@ -412,7 +504,8 @@ async function tryExternalFreeProviders(env, { messages, temperature, maxTokens,
       }
 
       const data = await res.json();
-      const answer = (extractTokenFromChunkObj(data) || '').trim();
+      const rawAns = (extractTokenFromChunkObj(data) || '').trim();
+      const answer = deduplicateAnswerSentences(rawAns).text;
       if (answer) {
         if (saveToEdgeCache) saveToEdgeCache(answer);
         return jsonResponse({ ok: true, answer, model: p.name });
@@ -451,7 +544,6 @@ export async function handleAIChat(request, env, ctx = null) {
   const wantStream = body?.stream !== false;
   let mode = body?.mode;
   if (mode === 'web_search' || mode === 'web_fallback') {
-    // Strictly block any external web search requests — enforce DAWAH X-only mode
     mode = 'not_found_islamic';
   } else if (!['grounded', 'chat', 'not_found_islamic', 'continue'].includes(mode)) {
     mode = Array.isArray(body?.rag_context) && body.rag_context.length > 0 ? 'grounded' : 'not_found_islamic';
@@ -515,17 +607,31 @@ export async function handleAIChat(request, env, ctx = null) {
     }
   };
 
-  // 2. Run Cloudflare Workers AI Cascade
+  // 2. Run Cloudflare Workers AI Cascade with Anti-Repetition Penalties
   let lastError = null;
   if (hasWorkersAI) {
     for (const model of MODEL_CASCADE) {
       try {
-        const aiResult = await env.AI.run(model, {
-          messages,
-          stream: wantStream,
-          temperature,
-          max_tokens: maxTokens,
-        });
+        const runParams = model.includes('gpt-oss')
+          ? {
+              messages,
+              stream: wantStream,
+              temperature,
+              top_p: 0.9,
+              frequency_penalty: 0.35,
+              max_tokens: maxTokens,
+            }
+          : {
+              messages,
+              stream: wantStream,
+              temperature,
+              top_p: 0.9,
+              repetition_penalty: 1.15,
+              frequency_penalty: 0.35,
+              max_tokens: maxTokens,
+            };
+
+        const aiResult = await env.AI.run(model, runParams);
 
         if (wantStream) {
           if (aiResult && typeof aiResult.getReader === 'function') {
@@ -543,12 +649,14 @@ export async function handleAIChat(request, env, ctx = null) {
             });
           }
 
-          const text = (extractTokenFromChunkObj(aiResult) || '').trim();
+          const rawTxt = (extractTokenFromChunkObj(aiResult) || '').trim();
+          const text = deduplicateAnswerSentences(rawTxt).text;
           if (text) saveToEdgeCache(text, model);
           return createSingleAnswerSSE(text, model, 'MISS');
         }
 
-        const answer = (extractTokenFromChunkObj(aiResult) || '').trim();
+        const rawAns = (extractTokenFromChunkObj(aiResult) || '').trim();
+        const answer = deduplicateAnswerSentences(rawAns).text;
         if (answer) {
           saveToEdgeCache(answer, model);
           return jsonResponse({ ok: true, answer, model, mode });
@@ -559,7 +667,7 @@ export async function handleAIChat(request, env, ctx = null) {
     }
   }
 
-  // 3. Automatic Zero-Cost Failover (still strictly bound to DAWAH X systemPrompt!)
+  // 3. Automatic Zero-Cost Failover (strictly bound to DAWAH X systemPrompt!)
   if (hasExternalBackup) {
     const extRes = await tryExternalFreeProviders(env, {
       messages,

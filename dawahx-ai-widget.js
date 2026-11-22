@@ -592,7 +592,11 @@
               if (!p || p === '[DONE]') return;
               try {
                 const j = JSON.parse(p);
-                if (j.token) onTok(j.token);
+                if (typeof j.replace_text === 'string') {
+                  onTok(null, j.replace_text);
+                } else if (j.token) {
+                  onTok(j.token, null);
+                }
               } catch (_) {}
             };
             while (true) {
@@ -611,18 +615,39 @@
 
           if (streamSlot) {
             let out = '';
-            await runWidgetStreamPass(basePayload, (tok) => {
-              out += tok;
+            let loopCut = false;
+            await runWidgetStreamPass(basePayload, (tok, rep) => {
+              if (rep !== null) {
+                out = rep;
+                loopCut = true;
+              } else if (tok) {
+                out += tok;
+              }
               streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
               msgsBox.scrollTop = msgsBox.scrollHeight;
             });
 
-            if (out.trim().length >= 90 && !/[।?!.)”'"\]*»﴾]\s*$/u.test(out.trim())) {
+            if (!loopCut && out.trim().length >= 90 && !/[।?!.)”'"\]*»﴾]\s*$/u.test(out.trim())) {
+              let firstContTok = true;
               await runWidgetStreamPass(
                 { ...basePayload, mode: 'continue', partial_answer: out },
-                (tok) => {
-                  const sp = out && !/\s$/.test(out) && !/^[\s।?!.,:;)\]”'"]/u.test(tok) ? ' ' : '';
-                  out += sp + tok;
+                (tok, rep) => {
+                  if (rep !== null) {
+                    out = rep;
+                  } else if (tok) {
+                    if (firstContTok) {
+                      firstContTok = false;
+                      const sp =
+                        out &&
+                        !/\s$/.test(out) &&
+                        !/^[\s\p{M}।?!.,:;)\]”'"—–-]/u.test(tok)
+                          ? ' '
+                          : '';
+                      out += sp + tok;
+                    } else {
+                      out += tok;
+                    }
+                  }
                   streamSlot.innerHTML = esc(out.trim()).replace(/\n/g, '<br>');
                   msgsBox.scrollTop = msgsBox.scrollHeight;
                 }
