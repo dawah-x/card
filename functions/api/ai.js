@@ -5,5 +5,5 @@ export async function onRequestOptions() {
 }
 
 export async function onRequestPost(context) {
-  return handleAIChat(context.request, context.env);
+  return handleAIChat(context.request, context.env, context);
 }

@@ -629,6 +629,28 @@
     { id: 'lalmonirhat', bn: 'লালমনিরহাট', lat: 25.9923, lon: 89.2847, aliases: ['লালমনিরহাট', 'lalmonirhat'] },
   ];
 
+  function findNearestCityByCoords(lat, lon) {
+    const numLat = Number(lat);
+    const numLon = Number(lon);
+    if (!Number.isFinite(numLat) || !Number.isFinite(numLon)) return BD_CITIES[0];
+    const rad = Math.PI / 180;
+    let best = BD_CITIES[0];
+    let bestDist = Infinity;
+    for (const c of BD_CITIES) {
+      const dLat = (c.lat - numLat) * rad;
+      const dLon = (c.lon - numLon) * rad;
+      const a =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(numLat * rad) * Math.cos(c.lat * rad) * Math.sin(dLon / 2) ** 2;
+      const d = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      if (d < bestDist) {
+        bestDist = d;
+        best = c;
+      }
+    }
+    return best;
+  }
+
   function detectCityInText(text, fallbackCityId = 'dhaka') {
     const low = foldBn(String(text || ''));
     for (const c of BD_CITIES) {
@@ -709,17 +731,31 @@
       return ha(alt);
     };
 
+    const sunriseDec = dhuhr - ha(-0.8333);
+    const sunsetDec = dhuhr + ha(-0.8333);
+    const fajrDec = dhuhr - ha(-18);
+    const nightDuration = ((fajrDec + 24) - sunsetDec) % 24;
+    const lastThirdStartDec = sunsetDec + (nightDuration * 2) / 3;
+
     const raw = {
-      sehriEnd: formatHourBn(dhuhr - ha(-18) - 3 / 60),
-      fajr: formatHourBn(dhuhr - ha(-18)),
-      sunrise: formatHourBn(dhuhr - ha(-0.8333)),
-      dhuhr: formatHourBn(dhuhr + 2 / 60),
+      sehriEnd: formatHourBn(fajrDec - 3 / 60),
+      fajr: formatHourBn(fajrDec),
+      sunrise: formatHourBn(sunriseDec),
+      ishraq: formatHourBn(sunriseDec + 15 / 60),
+      dhuhr: formatHourBn(dhuhr + 3 / 60),
       asr: formatHourBn(dhuhr + asrHa(1)),
       asrHanafi: formatHourBn(dhuhr + asrHa(2)),
-      maghrib: formatHourBn(dhuhr + ha(-0.8333)),
-      iftarIfb: formatHourBn(dhuhr + ha(-0.8333) + 3 / 60),
+      maghrib: formatHourBn(sunsetDec),
+      iftarIfb: formatHourBn(sunsetDec + 3 / 60),
       isha: formatHourBn(dhuhr + ha(-18)),
+      tahajjud: formatHourBn(lastThirdStartDec),
     };
+
+    const prohibited = [
+      { label: 'সূর্যোদয়ের সময়', range: `${raw.sunrise.short} – ${raw.ishraq.short}` },
+      { label: 'ঠিক দ্বিপ্রহর (জাওয়াল)', range: `${formatHourBn(dhuhr - 3 / 60).short} – ${raw.dhuhr.short}` },
+      { label: 'সূর্যাস্তের পূর্বমুহূর্ত', range: `${formatHourBn(sunsetDec - 15 / 60).short} – ${raw.maghrib.short}` },
+    ];
 
     const activeAsr = chosenMethod === 'shafi' ? raw.asr : raw.asrHanafi;
     const order = [
@@ -751,6 +787,7 @@
       date_label_bn: dateLabelBn,
       asr_method: chosenMethod,
       times: raw,
+      prohibited,
       current_waqt: currentWaqt,
       next_waqt_name: nextWaqt.name,
       next_waqt_time: nextWaqt.t.label,
@@ -1065,206 +1102,8 @@
   ];
 
   // =========================================================================
-  // v5.0 Qur'anic Fara'id / Miras Calculator & Smart Typeahead Suggestions
+  // Smart Typeahead Suggestions
   // =========================================================================
-  function calculateQuranicMiras(opts = {}) {
-    const deceasedGender = opts.deceasedGender === 'female' ? 'female' : 'male';
-    const netEstate = Math.max(0, Number(opts.netEstate) || 0);
-    const wives = deceasedGender === 'male' ? Math.min(4, Math.max(0, Math.floor(Number(opts.wives) || 0))) : 0;
-    const husband = deceasedGender === 'female' ? (opts.husband ? 1 : 0) : 0;
-    const father = Boolean(opts.father);
-    const mother = Boolean(opts.mother);
-    const sons = Math.max(0, Math.floor(Number(opts.sons) || 0));
-    const daughters = Math.max(0, Math.floor(Number(opts.daughters) || 0));
-
-    const hasChild = sons > 0 || daughters > 0;
-    const hasSpouse = wives > 0 || husband > 0;
-    const isUmariyyatayn = !hasChild && father && mother && hasSpouse;
-
-    const fixedHeirs = [];
-    // 1. Spouse (Surah An-Nisa 4:12)
-    let spouseShare = 0;
-    if (husband === 1) {
-      spouseShare = hasChild ? 0.25 : 0.5;
-      fixedHeirs.push({
-        id: 'husband',
-        label: 'স্বামী (১ জন)',
-        rawShare: spouseShare,
-        isSpouse: true,
-        basis: hasChild ? 'সন্তান থাকায় ১/৪ অংশ (সূরা আন-নিসা ৪:১২)' : 'সন্তান না থাকায় ১/২ অংশ (সূরা আন-নিসা ৪:১২)',
-      });
-    } else if (wives > 0) {
-      spouseShare = hasChild ? 0.125 : 0.25;
-      fixedHeirs.push({
-        id: 'wives',
-        label: wives > 1 ? `স্ত্রীগণ (${toBnDigitsStr(wives)} জন একত্রে)` : 'স্ত্রী (১ জন)',
-        count: wives,
-        rawShare: spouseShare,
-        isSpouse: true,
-        basis: hasChild ? 'সন্তান থাকায় ১/৮ অংশ (সূরা আন-নিসা ৪:১২)' : 'সন্তান না থাকায় ১/৪ অংশ (সূরা আন-নিসা ৪:১২)',
-      });
-    }
-
-    // 2. Mother (Surah An-Nisa 4:11 + Umariyyatayn consensus)
-    if (mother) {
-      if (isUmariyyatayn) {
-        const remAfterSpouse = 1 - spouseShare;
-        fixedHeirs.push({
-          id: 'mother',
-          label: 'মাতা',
-          rawShare: remAfterSpouse / 3,
-          isSpouse: false,
-          basis: 'উমরিয়্যাতাইন নীতিতে স্বামী/স্ত্রীর অংশের পর অবশিষ্টাংশের ১/৩ অংশ (সাহাবীগণের ইজমা)',
-        });
-      } else {
-        fixedHeirs.push({
-          id: 'mother',
-          label: 'মাতা',
-          rawShare: hasChild ? 1 / 6 : 1 / 3,
-          isSpouse: false,
-          basis: hasChild ? 'সন্তান থাকায় ১/৬ অংশ (সূরা আন-নিসা ৪:১১)' : 'সন্তান না থাকায় ১/৩ অংশ (সূরা আন-নিসা ৪:১১)',
-        });
-      }
-    }
-
-    // 3. Father fixed share when children exist (Surah An-Nisa 4:11)
-    if (father && hasChild) {
-      fixedHeirs.push({
-        id: 'father',
-        label: 'পিতা',
-        rawShare: 1 / 6,
-        isSpouse: false,
-        getsResidueToo: sons === 0 && daughters > 0,
-        basis:
-          sons > 0
-            ? 'পুত্র সন্তান থাকায় নির্ধারিত ১/৬ অংশ (সূরা আন-নিসা ৪:১১)'
-            : 'কন্যা সন্তান থাকায় নির্ধারিত ১/৬ অংশ + অবশিষ্ট আসাবা (সহীহ বুখারী ৬৭৩২)',
-      });
-    }
-
-    // 4. Daughters when no son exists (Surah An-Nisa 4:11)
-    if (sons === 0 && daughters > 0) {
-      fixedHeirs.push({
-        id: 'daughters',
-        label: daughters > 1 ? `কন্যাগণ (${toBnDigitsStr(daughters)} জন একত্রে)` : 'কন্যা (১ জন)',
-        count: daughters,
-        rawShare: daughters === 1 ? 0.5 : 2 / 3,
-        isSpouse: false,
-        basis: daughters === 1 ? 'একমাত্র কন্যা হওয়ায় ১/২ অংশ (সূরা আন-নিসা ৪:১১)' : 'একাধিক কন্যা হওয়ায় একত্রে ২/৩ অংশ (সূরা আন-নিসা ৪:১১)',
-      });
-    }
-
-    let sumFixed = fixedHeirs.reduce((acc, h) => acc + h.rawShare, 0);
-    let caseNote = 'স্বাভাবিক কুরআনিক বণ্টন (সূরা আন-নিসা ৪:১১–১২)';
-    const results = [];
-
-    if (sumFixed > 1.000001) {
-      // Awl (proportional reduction)
-      caseNote = 'আওল (Awl) নীতি প্রযোজ্য — নির্ধারিত অংশের যোগফল ১-এর বেশি হওয়ায় আনুপাতিক হারে সমন্বিত';
-      for (const h of fixedHeirs) {
-        results.push({ ...h, finalShare: h.rawShare / sumFixed });
-      }
-    } else {
-      const residue = Math.max(0, 1 - sumFixed);
-      for (const h of fixedHeirs) {
-        results.push({ ...h, finalShare: h.rawShare });
-      }
-
-      if (residue > 0.000001) {
-        if (sons > 0) {
-          const totalUnits = sons * 2 + daughters;
-          const sonShareTotal = residue * ((sons * 2) / totalUnits);
-          results.push({
-            id: 'sons',
-            label: sons > 1 ? `পুত্রগণ (${toBnDigitsStr(sons)} জন একত্রে)` : 'পুত্র (১ জন)',
-            count: sons,
-            finalShare: sonShareTotal,
-            basis: daughters > 0 ? 'আসাবা হিসেবে পুত্র:কন্যা = ২:১ অনুপাতে (সূরা আন-নিসা ৪:১১)' : 'আসাবা হিসেবে অবশিষ্ট সম্পূর্ণ অংশ (সহীহ বুখারী ৬৭৩২)',
-          });
-          if (daughters > 0) {
-            results.push({
-              id: 'daughters_asaba',
-              label: daughters > 1 ? `কন্যাগণ (${toBnDigitsStr(daughters)} জন একত্রে)` : 'কন্যা (১ জন)',
-              count: daughters,
-              finalShare: residue * (daughters / totalUnits),
-              basis: 'পুত্রের সাথে আসাবা বিল-গাইর (২:১ অনুপাতে — সূরা আন-নিসা ৪:১১)',
-            });
-          }
-        } else if (father && !hasChild) {
-          results.push({
-            id: 'father_asaba',
-            label: 'পিতা',
-            finalShare: residue,
-            basis: 'সন্তান না থাকায় আসাবা হিসেবে অবশিষ্ট সম্পূর্ণ অংশ (সহীহ বুখারী ৬৭৩২)',
-          });
-        } else if (father && sons === 0 && daughters > 0) {
-          const fRow = results.find((r) => r.id === 'father');
-          if (fRow) fRow.finalShare += residue;
-        } else {
-          // Radd to blood fixed heirs (Mother / Daughters) if no Asabah
-          const bloodHeirs = results.filter((r) => !r.isSpouse);
-          if (bloodHeirs.length > 0) {
-            caseNote = 'রাদ্দ (Radd) নীতি প্রযোজ্য — কোনো আসাবা না থাকায় অবশিষ্ট অংশ রক্তসম্পর্কীয় অংশীদারদের মাঝে আনুপাতিক প্রত্যর্পণ *(ভাই-বোন জীবিত না থাকলে)*';
-            const bloodSum = bloodHeirs.reduce((s, r) => s + r.finalShare, 0);
-            for (const bh of bloodHeirs) {
-              bh.finalShare += residue * (bh.finalShare / bloodSum);
-            }
-          } else if (results.length === 1) {
-            caseNote = 'অন্য কোনো ওয়ারিশ বা আসাবা না থাকায় অবশিষ্ট অংশ অন্তর্ভুক্ত';
-            results[0].finalShare += residue;
-          }
-        }
-      }
-    }
-
-    const formattedHeirs = results.map((r) => {
-      const pct = Number((r.finalShare * 100).toFixed(2));
-      const amt = netEstate > 0 ? Number((netEstate * r.finalShare).toFixed(2)) : null;
-      return {
-        label: r.label,
-        count: r.count || 1,
-        percentage: pct,
-        amount: amt,
-        basis: r.basis,
-      };
-    });
-    if (formattedHeirs.length > 0) {
-      const pctDiff = Number((100 - formattedHeirs.reduce((s, h) => s + h.percentage, 0)).toFixed(2));
-      if (Math.abs(pctDiff) > 0 && Math.abs(pctDiff) <= 0.05) {
-        let maxIdx = 0;
-        for (let i = 1; i < formattedHeirs.length; i++) {
-          if (formattedHeirs[i].percentage > formattedHeirs[maxIdx].percentage) maxIdx = i;
-        }
-        formattedHeirs[maxIdx].percentage = Number((formattedHeirs[maxIdx].percentage + pctDiff).toFixed(2));
-      }
-      if (netEstate > 0) {
-        const amtDiff = Number((netEstate - formattedHeirs.reduce((s, h) => s + (h.amount || 0), 0)).toFixed(2));
-        if (Math.abs(amtDiff) > 0 && Math.abs(amtDiff) <= 1.0) {
-          let maxIdx = 0;
-          for (let i = 1; i < formattedHeirs.length; i++) {
-            if ((formattedHeirs[i].amount || 0) > (formattedHeirs[maxIdx].amount || 0)) maxIdx = i;
-          }
-          formattedHeirs[maxIdx].amount = Number(((formattedHeirs[maxIdx].amount || 0) + amtDiff).toFixed(2));
-        }
-      }
-    }
-
-    return {
-      net_estate: netEstate,
-      case_note: caseNote,
-      heirs: formattedHeirs.map((h) => {
-        const perPersonAmt = h.amount !== null && h.count > 1 ? Number((h.amount / h.count).toFixed(2)) : null;
-        return {
-          ...h,
-          percentage_bn: toBnDigitsStr(h.percentage.toFixed(2)) + '%',
-          amount_bn: h.amount !== null ? toBnDigitsStr(h.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })) + ' টাকা' : null,
-          per_person_bn:
-            perPersonAmt !== null ? `প্রত্যেকে ${toBnDigitsStr(perPersonAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 }))} টাকা` : null,
-        };
-      }),
-    };
-  }
-
   const SUGGESTION_BANK = [
     'ওযু ভাঙ্গার কারণ কয়টি ও কি কি?',
     'ফরজ গোসলের সঠিক নিয়ম কী?',
@@ -1287,7 +1126,6 @@
     'রোজা রেখে টুথপেস্ট বা মিসওয়াক ব্যবহার করা যাবে কি?',
     'শাওয়ালের ৬ রোজার ফযীলত ও নিয়ম কী?',
     'আরাফার রোজা কবে রাখতে হবে?',
-    '৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?',
     'স্বর্ণ ও রৌপ্যের নিসাব ও যাকাত আদায়ের নিয়ম কী?',
     'ফিতরা কত টাকা ও কখন আদায় করতে হয়?',
     'একই পশুতে কুরবানী ও আকীকা দেওয়া যাবে কি?',
@@ -1322,7 +1160,6 @@
     'খাওয়ার শুরু ও শেষের দোয়া বলো',
     'আজকের নামাজের সময়সূচি দাও',
     'আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?',
-    'একটা ইসলামিক কুইজ ধরো',
   ];
 
   const MANDATORY_ANCHOR_STEMS = new Set(
@@ -1488,7 +1325,7 @@
       return makeChat(
         `মাশাআল্লাহ${nameTag}! আপনি **${cObj.bn}** থেকে বলছেন জেনে খুব ভালো লাগলো। আমি এটি মনে রাখলাম!`,
         [`প্রসঙ্গত, **${cObj.bn}**-এ পরবর্তী ওয়াক্ত **${sched.next_waqt_name}** শুরু হবে **${sched.next_waqt_time}** মিনিটে। আজ কী নিয়ে আলাপ করব?`],
-        [`${cObj.bn} জেলার আজকের নামাজের সময়সূচি`, 'একটা ইসলামিক কুইজ ধরো']
+        [`${cObj.bn} জেলার আজকের নামাজের সময়সূচি`, 'সালাতে মনোযোগ বাড়ানোর উপায় কী?']
       );
     }
 
@@ -1661,25 +1498,28 @@
           `মহান আল্লাহ কুরআনে সান্ত্বনা দিয়ে বলেছেন: ${rem.arabic} — **“${rem.meaning}”** (${rem.ref})।`,
           'চাইলে আমাকে খুলে বলতে পারেন কী নিয়ে দুশ্চিন্তা বা কষ্ট লাগছে—আমি শুনছি।',
         ],
-        ['হতাশা ও দুশ্চিন্তা দূর করার ইসলামিক উপায় কী?', 'গুনাহ হয়ে গেলে আল্লাহর ক্ষমা পাওয়ার উপায় কী?', 'দোয়া কবুল হওয়ার উত্তম সময় কোনটি?']
+        ['হতাশা ও দুশ্চিন্তা দূর করার ইসলামিক উপায় কী?', 'গুনাহ হয়ে গেলে আল্লাহর ক্ষমা পাওয়ার উপায় কী?', 'দোয়া কবুল হওয়ার উত্তম সময় কোনটি?'],
+        { deterministic: false }
       );
     }
 
     if (lastCtx) {
-      if (CHAT_PATTERNS.elaborate.test(q) && lastCtx.extra_body) {
-        const paras = String(lastCtx.extra_body)
+      if (
+        (CHAT_PATTERNS.elaborate.test(q) ||
+          /(?:সহজ\s*(?:করে|ভাষায়)|সংক্ষেপে|সারসংক্ষেপ|পয়েন্ট\s*আকারে|ইংরেজিতে\s*অনুবাদ|translate\s*(?:to|into)?\s*english|summarize|simplify)/iu.test(q)) &&
+        q.length <= 85
+      ) {
+        const paras = String(lastCtx.extra_body || '')
           .split(/\n\n+/)
           .map((p) => p.trim())
           .filter(Boolean)
           .slice(0, 4);
-        if (paras.length) {
-          return makeChat(
-            `অবশ্যই, **‘${lastCtx.primary_title}’** বিষয়ে আরও বিস্তারিত তুলে ধরছি—`,
-            paras,
-            [],
-            { sources: (lastCtx.sources || []).slice(0, 2) }
-          );
-        }
+        return makeChat(
+          `অবশ্যই, **‘${lastCtx.primary_title}’** বিষয়ে তুলে ধরছি—`,
+          paras,
+          [],
+          { sources: (lastCtx.sources || []).slice(0, 2), deterministic: false }
+        );
       }
       if (CHAT_PATTERNS.askDalil.test(q) && Array.isArray(lastCtx.evidences) && lastCtx.evidences.length) {
         return makeChat(
@@ -2085,8 +1925,8 @@
       return getHijriDateBn(dateObj);
     },
 
-    calculateMiras(opts = {}) {
-      return calculateQuranicMiras(opts);
+    findNearestCity(lat, lon) {
+      return findNearestCityByCoords(lat, lon);
     },
 
     suggest(inputText, limit = 5) {

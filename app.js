@@ -1,7 +1,8 @@
-/* ===== DAWAH X AI — Clean, Accurate & Complete Client Engine ===== */
+/* ===== DAWAH X AI — Clean, Cached, Accurate & Complete Client Engine (v13.0) ===== */
 (function () {
   'use strict';
 
+  const DEFAULT_DOC_TITLE = 'DAWAH X AI — দলিলনির্ভর ইসলামিক প্রশ্নোত্তর ও সহকারী';
   const BN_DIGITS = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
   const toBnNum = (val) =>
     String(val).replace(/\d/g, (d) => BN_DIGITS[Number(d)]);
@@ -13,21 +14,56 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
 
-  // Highlight inline Arabic script in Noto Naskh Arabic, bold markdown **...**, & inline numbered points
-  function formatRichText(text) {
-    let safe = escHtml(text);
+  function formatInlineSegment(raw) {
+    let safe = escHtml(raw);
     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    safe = safe.replace(/\*([^*]+)\*/g, '<em>$1</em>');
+    safe = safe.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s)।?!.,:;]|$)/g, '$1<em>$2</em>');
     safe = safe.replace(
       /([\u0600-\u06FF][\u0600-\u06FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{3,})/g,
       '<span class="ar-inline">$1</span>'
     );
     safe = safe.replace(/(?<=[।?!:])\s+(\([০-৯ক-ঘ]+\)|[০-৯]+\.)\s+/g, '<br><strong>$1</strong> ');
-    safe = safe.replace(/\n\n+/g, '<br><br>').replace(/\n/g, '<br>');
     return safe;
   }
 
-  // Check whether a Bengali / English / Arabic answer ended cleanly on sentence punctuation
+  // Structured Rich Formatter: headings, bullets, Bengali/Latin numbered points, bold & Arabic spans
+  function formatRichText(text) {
+    const raw = String(text || '').replace(/\r\n/g, '\n').trim();
+    if (!raw) return '';
+    const lines = raw.split('\n');
+    const out = [];
+    for (let i = 0; i < lines.length; i++) {
+      const ln = lines[i].trim();
+      if (!ln) {
+        if (out.length && out[out.length - 1] !== '<div class="md-gap"></div>') {
+          out.push('<div class="md-gap"></div>');
+        }
+        continue;
+      }
+      const headMatch = ln.match(/^#{1,4}\s+(.+)$/);
+      if (headMatch) {
+        out.push(`<div class="md-subhead">${formatInlineSegment(headMatch[1].replace(/\*\*/g, ''))}</div>`);
+        continue;
+      }
+      const bulletMatch = ln.match(/^(?:[•●▪▸\-–]|\*(?=\s))\s+(.+)$/);
+      if (bulletMatch) {
+        out.push(
+          `<div class="md-list-row"><span class="md-dot">•</span><span>${formatInlineSegment(bulletMatch[1])}</span></div>`
+        );
+        continue;
+      }
+      const numMatch = ln.match(/^((?:[০-৯]+|\d+)[.)]|\([০-৯ক-ঘ\d]+\))\s+(.+)$/);
+      if (numMatch) {
+        out.push(
+          `<div class="md-list-row"><strong class="md-num">${escHtml(numMatch[1])}</strong><span>${formatInlineSegment(numMatch[2])}</span></div>`
+        );
+        continue;
+      }
+      out.push(`<span>${formatInlineSegment(ln)}</span>` + (i < lines.length - 1 && lines[i + 1].trim() ? '<br>' : ''));
+    }
+    return out.join('');
+  }
+
   function isCompleteSentence(txt) {
     const trimmed = String(txt || '').trim();
     if (!trimmed) return false;
@@ -36,6 +72,7 @@
 
   let activeFilter = 'all';
   let isAsking = false;
+  let activeStreamAbort = null;
   let backendAvailable = null;
   let chatHistory = [];
   let currentSessionId = 'sess_' + Date.now();
@@ -44,6 +81,7 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v1';
   const CITY_KEY = 'dawahx_user_city_v4';
   const ASR_METHOD_KEY = 'dawahx_asr_method';
   const THEME_KEY = 'dawahx_theme_v4';
@@ -84,19 +122,55 @@
     } catch (_) {}
   }
 
+  // Client-side 7-day LRU cache for grounded answers (saves Cloudflare Neurons & gives <5ms repeat answers)
+  function makeLocalCacheKey(question, primaryKey) {
+    if (!primaryKey) return '';
+    const normQ = String(question || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return `${primaryKey}::${normQ}`;
+  }
+
+  function getCachedGroundedAnswer(question, primaryKey) {
+    const k = makeLocalCacheKey(question, primaryKey);
+    if (!k) return '';
+    const store = loadStoredJson(AI_CACHE_KEY, []);
+    const now = Date.now();
+    const hit = store.find((it) => it && it.k === k && now - (it.t || 0) < 7 * 86400 * 1000);
+    return hit && hit.v && isCompleteSentence(hit.v) ? hit.v : '';
+  }
+
+  function putCachedGroundedAnswer(question, primaryKey, answerText) {
+    const k = makeLocalCacheKey(question, primaryKey);
+    if (!k || !isCompleteSentence(answerText) || answerText.length < 90) return;
+    const store = loadStoredJson(AI_CACHE_KEY, []).filter((it) => it && it.k !== k);
+    store.unshift({ k, v: answerText, t: Date.now() });
+    saveStoredJson(AI_CACHE_KEY, store.slice(0, 40));
+  }
+
+  function abortActiveStream() {
+    if (activeStreamAbort) {
+      try {
+        activeStreamAbort.abort();
+      } catch (_) {}
+      activeStreamAbort = null;
+    }
+  }
+
   function stopSpeech() {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
     if (activeTtsBtn) {
       activeTtsBtn.classList.remove('tts-active');
-      activeTtsBtn.textContent = '🔊 শুনুন';
+      activeTtsBtn.innerHTML = activeTtsBtn.id === 'drawerSpeakBtn' ? '🔊<span class="r-lbl"> শুনুন</span>' : '🔊 শুনুন';
       activeTtsBtn = null;
     }
   }
 
   function toggleSpeakText(rawText, btnEl) {
-    if (!window.speechSynthesis) return;
+    if (!window.speechSynthesis) {
+      showToast('দুঃখিত, এই ব্রাউজারে অডিও সাপোর্ট নেই');
+      return;
+    }
     if (activeTtsBtn === btnEl) {
       stopSpeech();
       return;
@@ -109,7 +183,7 @@
       .trim();
     if (!clean) return;
 
-    const utter = new SpeechSynthesisUtterance(clean.slice(0, 2200));
+    const utter = new SpeechSynthesisUtterance(clean.slice(0, 2600));
     const voices = window.speechSynthesis.getVoices() || [];
     const bnVoice = voices.find((v) => /bn[-_]?BD/i.test(v.lang)) || voices.find((v) => /^bn/i.test(v.lang));
     if (bnVoice) utter.voice = bnVoice;
@@ -206,6 +280,9 @@
   }
 
   function closeOverlays() {
+    if (readerDrawer?.classList.contains('open') && activeTtsBtn?.id === 'drawerSpeakBtn') {
+      stopSpeech();
+    }
     sidebar?.classList.remove('open');
     readerDrawer?.classList.remove('open');
     prayerModal?.classList.remove('open');
@@ -354,6 +431,7 @@
     const sessions = loadStoredJson(SESSIONS_KEY, []);
     const found = sessions.find((s) => s.id === sessId);
     if (!found) return;
+    abortActiveStream();
     stopSpeech();
     currentSessionId = found.id;
     currentSessionTurns = found.turns || [];
@@ -368,6 +446,9 @@
       chatContainer.appendChild(ub);
       chatContainer.appendChild(renderAnswerCard(t.data));
     }
+    if (found.title) {
+      document.title = `${found.title} — DAWAH X AI`;
+    }
     renderSidebarLists();
     closeOverlays();
     chatScroll.scrollTop = chatScroll.scrollHeight;
@@ -375,6 +456,7 @@
 
   // New Chat / Reset
   newChatBtn?.addEventListener('click', () => {
+    abortActiveStream();
     stopSpeech();
     chatContainer.querySelectorAll('.msg-user, .msg-ai-card, .msg-ai-chat, .thinking-card').forEach((el) => el.remove());
     chatHistory = [];
@@ -383,6 +465,12 @@
     welcomeHero.style.display = '';
     questionInput.value = '';
     questionInput.style.height = 'auto';
+    document.title = DEFAULT_DOC_TITLE;
+    if (location.search.includes('q=')) {
+      try {
+        history.replaceState(null, '', location.pathname);
+      } catch (_) {}
+    }
     renderSidebarLists();
     closeOverlays();
     questionInput.focus();
@@ -412,8 +500,15 @@
     if (window.innerWidth <= 900) closeOverlays();
   });
 
-  // Delegate clicks on starter cards, topic buttons, follow-up chips, reader buttons, copy/share/bookmark buttons
+  // Delegate clicks across cards & controls
   document.body.addEventListener('click', (e) => {
+    const stopStreamBtn = e.target.closest('[data-stop-stream]');
+    if (stopStreamBtn) {
+      abortActiveStream();
+      showToast('⏹ উত্তর তৈরি থামানো হয়েছে');
+      return;
+    }
+
     const qTrigger = e.target.closest('[data-q]');
     if (qTrigger) {
       const q = qTrigger.getAttribute('data-q');
@@ -540,7 +635,6 @@
     submitQuestion(q);
   });
 
-  // Warm corpus index & probe optional local FastAPI backend
   async function initCorpusWarmup() {
     try {
       if (backendAvailable !== false && !location.hostname.endsWith('.github.io') && !location.hostname.endsWith('.workers.dev')) {
@@ -599,7 +693,7 @@
       const ctype = res.headers.get('content-type') || '';
       if (res.ok && ctype.includes('application/json')) {
         const info = await res.json();
-        if (info && info.ok && info.engine === 'cloudflare-workers-ai') {
+        if (info && info.ok) {
           cfAiAvailable = true;
           cfAiEndpointBase = candidateBase;
           cfAiModelName = String(info.primary_model || '').includes('70b') ? 'Llama 3.3 70B' : 'Cloudflare AI';
@@ -642,12 +736,13 @@
     }
   }
 
-  // Stream a single SSE pass from Cloudflare Workers AI, properly flushing trailing multi-byte UTF-8 chunks
-  async function streamCloudflarePass(aiUrl, payloadBody, onToken) {
+  // Stream a single SSE pass with AbortController & UTF-8 tail flush
+  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken) {
     const res = await fetch(aiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payloadBody),
+      signal,
     });
     if (!res.ok || !res.body) throw new Error('Stream unavailable');
 
@@ -684,7 +779,6 @@
       for (const ln of lines) processLine(ln);
     }
 
-    // Flush remaining decoder bytes + trailing line
     sseBuf += decoder.decode();
     for (const ln of sseBuf.split(/\r?\n/)) {
       if (ln.trim()) processLine(ln);
@@ -694,7 +788,6 @@
   }
 
   async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
-    // Never overwrite deterministic built-in tools (Prayer Times, Hijri Date, Clock, Zakat Math, Masnoon Duas, Quizzes, Recent Articles)!
     if (!targetEl || data.is_deterministic_tool) return;
 
     const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
@@ -706,12 +799,36 @@
           ? 'grounded'
           : 'chat';
 
+    const fallbackHtml = targetEl.innerHTML;
+
+    // 1. Instant Client Cache Hit (0 network requests & 0 Cloudflare Neurons!)
+    if (mode === 'grounded' && data.primary_key && !(historySnapshot && historySnapshot.length && question.length <= 50)) {
+      const cached = getCachedGroundedAnswer(question, data.primary_key);
+      if (cached) {
+        targetEl.innerHTML =
+          `<div class="ai-stream-box">` +
+          `<div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div>` +
+          `<div class="ai-stream-body">${formatRichText(cached)}</div>` +
+          `</div>` +
+          (fallbackHtml.trim()
+            ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
+            : '');
+        applyGeneratedAnswerToCard(answerCard, data, cached);
+        return;
+      }
+    }
+
     if (!cfAiAvailable) return;
 
+    abortActiveStream();
+    const abortCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    activeStreamAbort = abortCtrl;
+    const signal = abortCtrl ? abortCtrl.signal : undefined;
+
     const aiUrl = cfAiEndpointBase ? `${cfAiEndpointBase}/api/ai` : 'api/ai';
-    const fallbackHtml = targetEl.innerHTML;
     let streamBody = null;
     let statusSpan = null;
+    let stopBtn = null;
 
     if (isBubble) {
       targetEl.innerHTML = `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>`;
@@ -721,7 +838,10 @@
         `<div class="ai-stream-box">` +
         `<div class="ai-stream-head">` +
         `<span data-stream-status>✦ বিস্তারিত ব্যাখ্যা তৈরি হচ্ছে...</span>` +
+        `<div class="stream-head-right">` +
+        `<button type="button" class="stream-stop-btn" data-stop-stream="1">⏹ থামান</button>` +
         `<small>DAWAH X দলিলভিত্তিক</small>` +
+        `</div>` +
         `</div>` +
         `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
         `</div>` +
@@ -730,10 +850,11 @@
           : '');
       streamBody = targetEl.querySelector('[data-stream-body]');
       statusSpan = targetEl.querySelector('[data-stream-status]');
+      stopBtn = targetEl.querySelector('[data-stop-stream]');
     }
 
+    let fullText = '';
     try {
-      let fullText = '';
       let rafScheduled = false;
 
       const flushRender = (doneNow) => {
@@ -762,19 +883,18 @@
         evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 3) : [],
       };
 
-      const firstPass = await streamCloudflarePass(aiUrl, basePayload, (tok) => {
+      const firstPass = await streamCloudflarePass(aiUrl, basePayload, signal, (tok) => {
         fullText += tok;
         onChunk();
       });
 
-      // If stream errored before producing a meaningful answer, restore complete verbatim DAWAH X text!
       if (firstPass.hadStreamError && fullText.trim().length < 140) {
         targetEl.innerHTML = fallbackHtml;
         return;
       }
 
-      // Seamless Auto-Continuation: if answer hit token boundary mid-sentence, automatically complete it!
-      if (fullText.trim().length >= 90 && !isCompleteSentence(fullText)) {
+      // Seamless Auto-Continuation when an answer reaches token boundary mid-sentence
+      if (fullText.trim().length >= 90 && !isCompleteSentence(fullText) && !(signal && signal.aborted)) {
         try {
           await streamCloudflarePass(
             aiUrl,
@@ -783,6 +903,7 @@
               mode: 'continue',
               partial_answer: fullText,
             },
+            signal,
             (tok) => {
               const needsSpace =
                 fullText &&
@@ -795,14 +916,18 @@
         } catch (_) {}
       }
 
+      if (stopBtn) stopBtn.remove();
       const cleaned = fullText.trim();
       if (cleaned && isCompleteSentence(cleaned)) {
         flushRender(true);
         if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
         applyGeneratedAnswerToCard(answerCard, data, cleaned);
+        if (mode === 'grounded' && data.primary_key) {
+          putCachedGroundedAnswer(question, data.primary_key, cleaned);
+        }
         return;
       }
-      if (cleaned.length >= 180) {
+      if (cleaned.length >= 160) {
         fullText = cleaned + '।';
         flushRender(true);
         if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
@@ -811,8 +936,20 @@
       }
 
       targetEl.innerHTML = fallbackHtml;
-    } catch (_) {
+    } catch (err) {
+      if (stopBtn) stopBtn.remove();
+      if (err && err.name === 'AbortError' && fullText.trim().length >= 100) {
+        const partialDone = isCompleteSentence(fullText) ? fullText.trim() : fullText.trim() + '।';
+        if (streamBody) streamBody.innerHTML = formatRichText(partialDone);
+        if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিশ্লেষণ';
+        applyGeneratedAnswerToCard(answerCard, data, partialDone);
+        return;
+      }
       targetEl.innerHTML = fallbackHtml;
+    } finally {
+      if (activeStreamAbort === abortCtrl) {
+        activeStreamAbort = null;
+      }
     }
   }
 
@@ -962,7 +1099,6 @@
       return wrap;
     }
 
-    // Collapsible full reader scenario when fatwa question had a long backstory
     let scenarioHtml = '';
     if (data.reader_scenario && data.reader_scenario.length > 180 && data.reader_scenario !== data.headline) {
       scenarioHtml = `
@@ -972,7 +1108,6 @@
         </details>`;
     }
 
-    // Multi-Part Series Navigator (`series.json`)
     let seriesHtml = '';
     if (data.series_info && Array.isArray(data.series_info.parts) && data.series_info.parts.length > 1) {
       const partBtns = data.series_info.parts
@@ -990,7 +1125,6 @@
         </div>`;
     }
 
-    // Clean related follow-up questions
     const topicChips = (data.follow_ups || [])
       .slice(0, 4)
       .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">↳ ${escHtml(fq)}</button>`)
@@ -1046,6 +1180,8 @@
 
   async function submitQuestion(question) {
     if (isAsking) return;
+    abortActiveStream();
+    stopSpeech();
     isAsking = true;
     sendBtn.disabled = true;
     welcomeHero.style.display = 'none';
@@ -1084,6 +1220,12 @@
         data = await window.DawahXBrowserAI.ask(question, activeFilter, 5, historySnapshot);
       }
       if (!data) throw new Error('No AI response');
+
+      if (data.headline) {
+        document.title = `${data.headline.slice(0, 62)} — DAWAH X AI`;
+      } else {
+        document.title = `${question.slice(0, 52)} — DAWAH X AI`;
+      }
 
       chatHistory.push({ role: 'user', text: question });
       chatHistory.push({
@@ -1180,7 +1322,7 @@
     }
   }
 
-  // Reader Drawer Search Highlighter & Controls
+  // Reader Drawer Search Highlighter & Audio / Font / Link Controls
   document.getElementById('readerSearchInput')?.addEventListener('input', (e) => {
     const contentEl = document.getElementById('drawerContent');
     const badgeEl = document.getElementById('readerMatchBadge');
@@ -1222,6 +1364,15 @@
     }
     const firstMark = contentEl.querySelector('mark.reader-hl');
     if (firstMark) firstMark.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+
+  document.getElementById('drawerSpeakBtn')?.addEventListener('click', (e) => {
+    const btn = e.currentTarget;
+    const contentEl = document.getElementById('drawerContent');
+    const titleTxt = document.getElementById('drawerTitle')?.textContent || '';
+    const bodyTxt = contentEl?.textContent || '';
+    if (!bodyTxt.trim()) return;
+    toggleSpeakText(`${titleTxt}। ${bodyTxt}`, btn);
   });
 
   document.getElementById('drawerCopyLinkBtn')?.addEventListener('click', () => {
@@ -1283,9 +1434,10 @@
     voiceBtn.style.display = 'none';
   }
 
-  // ===== 64-District Prayer, Sehri, Iftar & Hijri Modal =====
+  // ===== 64-District Prayer, Sehri, Iftar, Tahajjud & Prohibited Times Modal =====
   const prayerCitySelect = document.getElementById('prayerCitySelect');
   const prayerAsrSelect = document.getElementById('prayerAsrSelect');
+  const detectLocationBtn = document.getElementById('detectLocationBtn');
 
   function renderPrayerModalBody() {
     if (!window.DawahXBrowserAI || !prayerModal) return;
@@ -1315,12 +1467,12 @@
     const rows = [
       ['সেহরির শেষ সময় (সতর্কতামূলক)', tm.sehriEnd.label, false],
       ['ফজর শুরু', tm.fajr.label, sched.next_waqt_name === 'ফজর' || sched.next_waqt_name === 'আগামীকাল ফজর'],
-      ['সূর্যোদয়', tm.sunrise.label, sched.next_waqt_name === 'সূর্যোদয়'],
+      ['সূর্যোদয় ও ইশরাক', `${tm.sunrise.label} (ইশরাক: ${tm.ishraq ? tm.ishraq.short : ''})`, sched.next_waqt_name === 'সূর্যোদয়'],
       ['যোহর', tm.dhuhr.label, sched.next_waqt_name === 'যোহর'],
       ['আসর (শাফেঈ / আহলে হাদীস — ১ ছায়া)', tm.asr.label, isShafi && sched.next_waqt_name === 'আসর'],
       ['আসর (হানাফী / ই.ফা. — ২ ছায়া)', tm.asrHanafi.label, !isShafi && sched.next_waqt_name === 'আসর'],
       ['মাগরিব / ইফতার (সূর্যাস্ত)', `${tm.maghrib.label}${tm.iftarIfb ? ` (ই.ফা.: ${tm.iftarIfb.short})` : ''}`, sched.next_waqt_name === 'মাগরিব / ইফতার'],
-      ['এশা', tm.isha.label, sched.next_waqt_name === 'এশা'],
+      ['এশা ও তাহাজ্জুদ (শেষ তৃতীয়াংশ)', `${tm.isha.label}${tm.tahajjud ? ` · তাহাজ্জুদ: ${tm.tahajjud.short}` : ''}`, sched.next_waqt_name === 'এশা'],
     ];
     const gridEl = document.getElementById('prayerGridTable');
     if (gridEl) {
@@ -1333,6 +1485,13 @@
           </div>`
         )
         .join('');
+    }
+
+    const prohibEl = document.getElementById('prayerProhibitedBox');
+    if (prohibEl && Array.isArray(sched.prohibited)) {
+      prohibEl.innerHTML =
+        `<strong>⚠ সালাতের নিষিদ্ধ সময়সমূহ:</strong> ` +
+        sched.prohibited.map((p) => `${escHtml(p.label)}: <b>${escHtml(p.range)}</b>`).join(' · ');
     }
   }
 
@@ -1357,6 +1516,33 @@
     localStorage.setItem(ASR_METHOD_KEY, selectedAsrMethod);
     updateLivePrayerBadge();
     renderPrayerModalBody();
+  });
+
+  detectLocationBtn?.addEventListener('click', () => {
+    if (!navigator.geolocation || !window.DawahXBrowserAI?.findNearestCity) {
+      showToast('দুঃখিত, লোকেশন সার্ভিস পাওয়া যায়নি');
+      return;
+    }
+    const origTxt = detectLocationBtn.textContent;
+    detectLocationBtn.textContent = '⏳ খোঁজা হচ্ছে...';
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const nearest = window.DawahXBrowserAI.findNearestCity(pos.coords.latitude, pos.coords.longitude);
+        if (nearest && nearest.id) {
+          selectedCityId = nearest.id;
+          localStorage.setItem(CITY_KEY, selectedCityId);
+          updateLivePrayerBadge();
+          renderPrayerModalBody();
+          showToast(`✓ আপনার নিকটস্থ জেলা: ${nearest.bn}`);
+        }
+        detectLocationBtn.textContent = origTxt;
+      },
+      () => {
+        detectLocationBtn.textContent = origTxt;
+        showToast('লোকেশন অনুমতি পাওয়া যায়নি — তালিকা থেকে জেলা বেছে নিন');
+      },
+      { enableHighAccuracy: false, timeout: 7000, maximumAge: 600000 }
+    );
   });
 
   // In-App YouTube Cinema Lightbox & Live Broadcast Poller

@@ -1771,6 +1771,32 @@ html[data-theme='light'] .msg-user {
   color: #ffffff;
 }
 
+html[data-theme='light'] .ai-direct-verdict {
+  background: rgba(154, 109, 11, 0.08);
+  border-left-color: var(--gold);
+}
+
+html[data-theme='light'] .badge-notfound {
+  background: rgba(180, 83, 9, 0.12);
+  color: #b45309;
+  border-color: rgba(180, 83, 9, 0.35);
+}
+
+html[data-theme='light'] .ai-avatar-dot {
+  background: linear-gradient(135deg, rgba(180, 128, 14, 0.18), #ffffff);
+  box-shadow: 0 3px 10px rgba(10, 35, 30, 0.1);
+}
+
+html[data-theme='light'] .ai-stream-box {
+  background: linear-gradient(180deg, rgba(13, 122, 88, 0.07), rgba(13, 122, 88, 0.02));
+  border-color: rgba(13, 122, 88, 0.28);
+}
+
+html[data-theme='light'] select option {
+  background: #ffffff;
+  color: #0f2421;
+}
+
 body.font-lg .ai-explanation,
 body.font-lg .ai-chat-bubble,
 body.font-lg .ai-direct-verdict,
@@ -1896,23 +1922,6 @@ body.font-xl .drawer-html-content {
   color: var(--gold-bright);
 }
 
-.quote-canvas-wrap {
-  display: flex;
-  justify-content: center;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 10px;
-}
-
-.quote-canvas-wrap canvas {
-  width: 100%;
-  max-width: 390px;
-  height: auto;
-  aspect-ratio: 1 / 1;
-  border-radius: 8px;
-}
-
 .video-lightbox-dialog {
   width: min(860px, 95vw);
 }
@@ -1932,7 +1941,7 @@ body.font-xl .drawer-html-content {
   border: 0;
 }
 
-/* ===== v5.0–v6.0 Smart Typeahead, Fara'id Miras, Tasbih, Command Palette, Toast & Multi-Device Polish ===== */
+/* ===== Smart Typeahead, Reader Search, Scroll-to-Bottom & Rich Markdown Formatting ===== */
 .composer-inner {
   position: relative;
 }
@@ -2022,151 +2031,6 @@ mark.reader-hl {
   border-radius: 3px;
 }
 
-/* Fara'id / Miras Calculator */
-.miras-form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.miras-label {
-  display: block;
-  font-size: 12px;
-  color: var(--muted);
-  margin-bottom: 4px;
-}
-
-.miras-note-banner {
-  padding: 9px 13px;
-  border-radius: 10px;
-  background: var(--emerald-soft);
-  border: 1px solid rgba(34, 197, 139, 0.3);
-  color: var(--emerald);
-  font-size: 12.8px;
-  font-weight: 600;
-}
-
-.miras-results-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.miras-row {
-  padding: 10px 13px;
-  border-radius: 11px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-}
-
-.miras-row-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.miras-row-title {
-  font-weight: 700;
-  color: var(--text);
-  font-size: 14px;
-}
-
-.miras-row-val {
-  font-weight: 700;
-  color: var(--gold-bright);
-  font-size: 14px;
-}
-
-.miras-bar-track {
-  height: 6px;
-  border-radius: 99px;
-  background: var(--line-soft);
-  margin: 6px 0;
-  overflow: hidden;
-}
-
-.miras-bar-fill {
-  height: 100%;
-  border-radius: 99px;
-  background: linear-gradient(90deg, var(--emerald), var(--gold));
-}
-
-.miras-row-basis {
-  font-size: 12px;
-  color: var(--muted);
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-/* Digital Tasbih Counter */
-.tasbih-display-card {
-  text-align: center;
-  padding: 18px 14px;
-  border-radius: 16px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-}
-
-.tasbih-arabic {
-  font-size: 28px;
-  line-height: 1.65;
-  color: var(--gold-bright);
-  margin-bottom: 4px;
-  font-family: 'Noto Naskh Arabic', serif;
-}
-
-.tasbih-meaning {
-  font-size: 13.5px;
-  color: var(--muted);
-  margin-bottom: 14px;
-}
-
-.tasbih-tap-circle {
-  width: 158px;
-  height: 158px;
-  border-radius: 50%;
-  margin: 0 auto 8px;
-  border: 3px solid var(--gold);
-  background: radial-gradient(circle at 35% 30%, rgba(245, 180, 0, 0.2), rgba(16, 185, 129, 0.08));
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28), inset 0 0 18px rgba(245, 180, 0, 0.12);
-  transition: transform 0.09s ease, box-shadow 0.16s ease, border-color 0.2s ease;
-  user-select: none;
-  touch-action: manipulation;
-}
-
-.tasbih-tap-circle:active {
-  transform: scale(0.94);
-}
-
-.tasbih-tap-circle.completed {
-  border-color: var(--emerald);
-  box-shadow: 0 0 28px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.2);
-}
-
-.tasbih-count-num {
-  font-size: 40px;
-  font-weight: 800;
-  color: var(--gold-bright);
-  line-height: 1.1;
-}
-
-.tasbih-target-lbl {
-  font-size: 12px;
-  color: var(--muted);
-  margin-top: 3px;
-}
-
-/* Floating Scroll-to-Bottom Button */
 .scroll-bottom-btn {
   position: absolute;
   right: 22px;
@@ -2189,50 +2053,6 @@ mark.reader-hl {
   background: var(--surface-2);
 }
 
-/* Command Palette Launcher (Ctrl+K / Mobile Bolt) */
-.cmd-palette-dialog {
-  width: min(620px, 94vw);
-}
-
-.cmd-results-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 52vh;
-  overflow-y: auto;
-}
-
-.cmd-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  padding: 10px 13px;
-  border-radius: 10px;
-  border: 1px solid var(--line-soft);
-  background: var(--surface-2);
-  color: var(--text);
-  font-size: 14px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 0.14s, background 0.14s;
-}
-
-.cmd-item:hover,
-.cmd-item.active {
-  border-color: var(--gold);
-  background: var(--gold-soft);
-  color: var(--gold-bright);
-}
-
-.cmd-item small {
-  color: var(--muted);
-  font-size: 11.5px;
-  flex-shrink: 0;
-}
-
-/* Per-Dalil Copy Row & Contextual Smart Tool CTA */
 .dalil-item-head {
   display: flex;
   justify-content: space-between;
@@ -2258,93 +2078,105 @@ mark.reader-hl {
   background: var(--gold-soft);
 }
 
-.smart-tool-cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  align-self: flex-start;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid var(--gold-border);
-  background: var(--gold-soft);
-  color: var(--gold-bright);
-  font-size: 13.5px;
-  font-weight: 700;
-  cursor: pointer;
-  transition: transform 0.16s, border-color 0.16s;
-}
-
-.smart-tool-cta:hover {
-  transform: translateY(-1px);
-  border-color: var(--gold);
-}
-
-/* Cloudflare Workers AI Live Streaming & Config Styles */
+/* Cloudflare Workers AI Live Streaming & Structured Answer Formatting */
 .ai-pill.cf-live {
   box-shadow: 0 0 12px rgba(16, 185, 129, 0.55);
   outline: 1px solid rgba(16, 185, 129, 0.65);
 }
 
-.cf-config-panel {
-  padding: 14px;
-  border-radius: 13px;
-  border: 1px solid var(--gold-border);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(245, 184, 28, 0.06));
-}
-
-.cf-status-pill {
+.stream-head-right {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-soft);
-}
-
-.cf-status-pill.live {
-  border-color: rgba(16, 185, 129, 0.48);
-  background: rgba(16, 185, 129, 0.14);
-  color: var(--emerald);
-}
-
-.cf-url-row {
-  display: flex;
   gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
 }
 
-.cf-url-row .input-field {
-  flex: 1 1 240px;
-  min-width: 0;
-}
-
-.cf-setup-guide {
-  margin-top: 10px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--line-soft);
-  background: var(--surface);
-  font-size: 12.8px;
-  color: var(--text-soft);
-}
-
-.cf-setup-guide summary {
+.stream-stop-btn {
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.12);
+  color: var(--gold-bright);
+  font-size: 11.5px;
+  font-weight: 600;
   cursor: pointer;
+}
+
+.stream-stop-btn:hover {
+  background: rgba(245, 158, 11, 0.24);
+}
+
+.md-gap {
+  height: 9px;
+}
+
+.md-subhead {
+  font-size: 15.8px;
   font-weight: 700;
+  color: var(--gold-bright);
+  margin: 8px 0 4px;
+}
+
+.md-list-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.md-dot {
+  color: var(--gold);
+  font-weight: 700;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.md-num {
+  color: var(--gold-bright);
+  flex-shrink: 0;
+  min-width: 1.4em;
+}
+
+.prohibited-times-note {
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  background: rgba(245, 158, 11, 0.08);
+  color: var(--text-soft);
+  font-size: 12.8px;
+  line-height: 1.6;
+}
+
+.prohibited-times-note strong {
   color: var(--gold-bright);
 }
 
-.cf-setup-guide ol {
-  margin: 8px 0 0 18px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  line-height: 1.65;
+@media print {
+  .sidebar,
+  .top-header,
+  .composer-area,
+  .scroll-bottom-btn,
+  .card-actions-bar,
+  .src-btn-row,
+  .backdrop {
+    display: none !important;
+  }
+  .app-shell {
+    display: block;
+    height: auto;
+    overflow: visible;
+  }
+  .main-pane,
+  .chat-scroll {
+    height: auto;
+    overflow: visible;
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .msg-ai-card {
+    box-shadow: none;
+    border: 1px solid #ccc;
+    break-inside: avoid;
+  }
 }
 
 .ai-stream-box {
