@@ -98,14 +98,18 @@
   ].map((g) => g.map(foldBn));
 
   const BANGLISH_MAP = {
-    namaz: 'নামাজ সালাত', salat: 'সালাত নামাজ', salah: 'সালাত নামাজ',
+    namaz: 'নামাজ সালাত', namaj: 'নামাজ সালাত', salat: 'সালাত নামাজ', salah: 'সালাত নামাজ',
     roja: 'রোজা সিয়াম', roza: 'রোজা সিয়াম', fasting: 'রোজা সিয়াম',
-    oju: 'ওজু অজু', wudu: 'ওজু অজু', zakat: 'যাকাত নিসাব',
-    hajj: 'হজ্জ হজ', qurbani: 'কুরবানি', dua: 'দোয়া দুআ',
-    quran: 'কুরআন', hadith: 'হাদিস সুন্নাহ', allah: 'আল্লাহ স্রষ্টা',
-    god: 'আল্লাহ স্রষ্টা অস্তিত্ব', atheist: 'নাস্তিক নাস্তিকতা',
-    music: 'গান বাদ্যযন্ত্র', riba: 'সুদ ব্যাংক', talaq: 'তালাক বিবাহ',
-    hijab: 'পর্দা হিজাব', sahu: 'সাহু সিজদা', injection: 'ইনজেকশন সিয়াম',
+    oju: 'ওজু অজু', wudu: 'ওজু অজু', gosol: 'গোসল ফরজ', tayammum: 'তায়াম্মুম',
+    zakat: 'যাকাত নিসাব', jakat: 'যাকাত নিসাব', fitra: 'ফিতরা সদকাতুল ফিতর',
+    hajj: 'হজ্জ হজ', qurbani: 'কুরবানী পশু', kurbani: 'কুরবানী পশু', aqiqah: 'আকীকা', akika: 'আকীকা',
+    dua: 'দোয়া দুআ', doa: 'দোয়া দুআ', quran: 'কুরআন', hadith: 'হাদিস সুন্নাহ',
+    allah: 'আল্লাহ স্রষ্টা', god: 'আল্লাহ স্রষ্টা অস্তিত্ব', atheist: 'নাস্তিক নাস্তিকতা',
+    music: 'গান বাদ্যযন্ত্র', riba: 'সুদ ব্যাংক', talaq: 'তালাক বিবাহ', talak: 'তালাক বিবাহ',
+    hijab: 'পর্দা হিজাব', sahu: 'সাহু সিজদা', vul: 'ভুল সাহু সিজদা', bhul: 'ভুল সাহু সিজদা',
+    sofor: 'সফর ক্বছর', kosor: 'ক্বছর ছালাত', istikhara: 'ইস্তেখারা ছালাত',
+    toothpaste: 'টুথপেষ্ট মিসওয়াক ছিয়াম', blood: 'রক্ত দান', donation: 'দান রক্ত',
+    bidaat: 'বিদআত সুন্নাত', nojor: 'বদনযর রুকইয়াহ', injection: 'ইনজেকশন সিয়াম',
   };
 
   const STOP_WORDS = new Set(
@@ -116,11 +120,26 @@
     ].map(foldBn)
   );
 
+  function resolveWidgetBanglish(rawW) {
+    const cands = [rawW, rawW.replace(/([aeiou])\1+/g, '$1')];
+    const sufs = ['er', 'te', 'ke', 'ta', 'ti', 'ra', 'e', 'y', 'r', 's'];
+    for (const w of cands) {
+      if (BANGLISH_MAP[w]) return BANGLISH_MAP[w];
+      for (const sf of sufs) {
+        if (w.length - sf.length >= 3 && w.endsWith(sf) && BANGLISH_MAP[w.slice(0, -sf.length)]) {
+          return BANGLISH_MAP[w.slice(0, -sf.length)];
+        }
+      }
+    }
+    return null;
+  }
+
   function expandQueryTokens(rawQ) {
     let q = rawQ;
     const lat = rawQ.toLowerCase().match(/[a-z]{2,}/g) || [];
     for (const w of lat) {
-      if (BANGLISH_MAP[w]) q += ' ' + BANGLISH_MAP[w];
+      const m = resolveWidgetBanglish(w);
+      if (m) q += ' ' + m;
     }
     const base = searchTokens(q).filter((t) => !STOP_WORDS.has(t));
     const use = base.length ? base : searchTokens(q);

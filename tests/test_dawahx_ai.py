@@ -124,10 +124,40 @@ class TestDawahXAI(unittest.TestCase):
         self.assertIsNotNone(p_res)
         self.assertIn("চট্টগ্রাম", p_res["direct_answer"])
 
-        # English OOD query stays strictly not_found
+        # English & Bengali secular OOD queries stay strictly not_found
         ood_en = self.model.retrieve("python deep learning gpu cluster setup code", top_k=5)
         ans_en = synthesize_response("python deep learning gpu cluster setup code", ood_en, self.model.summary)
         self.assertEqual(ans_en["status"], "not_found")
+
+        ood_bn = self.model.retrieve("ঢাকা থেকে কক্সবাজার ট্রেনের টিকেট ভাড়া কত?", top_k=5)
+        ans_bn = synthesize_response("ঢাকা থেকে কক্সবাজার ট্রেনের টিকেট ভাড়া কত?", ood_bn, self.model.summary)
+        self.assertEqual(ans_bn["status"], "not_found")
+
+    def test_v5_inflected_banglish_salam_and_complete_verdict(self) -> None:
+        # 1) Inflected Banglish (-e locative) + stretched vowel handling
+        q1 = "namaje vul hole ki korbo?"
+        r1 = synthesize_response(q1, self.model.retrieve(q1, top_k=5), self.model.summary)
+        self.assertEqual(r1["status"], "answered")
+        self.assertFalse(r1["direct_answer"].rstrip().endswith((":", "ঃ")))
+        self.assertGreaterEqual(len(r1["direct_answer"]), 60)
+
+        # 2) 'সালাম' preserved as core Islamic topic in "অমুসলিমকে সালাম দেওয়া যাবে কি?"
+        q2 = "অমুসলিমকে সালাম দেওয়া যাবে কি?"
+        r2 = synthesize_response(q2, self.model.retrieve(q2, top_k=5), self.model.summary)
+        self.assertEqual(r2["status"], "answered")
+        self.assertIn("সালাম", r2["headline"] + " " + r2["direct_answer"])
+
+        # 3) No dangling-colon short direct_answer on Sahu Sajdah
+        q3 = "সিজদায়ে সাহু দেওয়ার নিয়ম কি?"
+        r3 = synthesize_response(q3, self.model.retrieve(q3, top_k=5), self.model.summary)
+        self.assertEqual(r3["status"], "answered")
+        self.assertFalse(r3["direct_answer"].rstrip().endswith((":", "ঃ")))
+        self.assertGreaterEqual(len(r3["direct_answer"]), 85)
+
+        # 4) Granular single-publication source_filter ('at')
+        ret_at = self.model.retrieve("ওযু ভাঙ্গার কারণ কি?", top_k=5, source_filter="at")
+        self.assertTrue(len(ret_at["candidates"]) >= 1)
+        self.assertTrue(all(c["source_code"] == "at" for c in ret_at["candidates"]))
 
 
 if __name__ == "__main__":

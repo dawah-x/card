@@ -97,11 +97,17 @@
     [/ভাইবোন/gu, 'ভাই বোন'],
     [/ছেলেমেয়ে|ছেলেমেয়ে/gu, 'ছেলে মেয়ে'],
     [/শবেবরাত/gu, 'শবে বরাত'],
-    [/শবেকদর/gu, 'শবে কদর'],
+    [/শবে\s*কদর|শবেকদর/gu, 'শবে কদর লাইলাতুল কদর'],
+    [/বদ\s*নজর|বদ\s*নযর|বদনজর/gu, 'বদনযর নযর রুকইয়াহ'],
+    [/রক্তদান/gu, 'রক্ত দান রোগীকে'],
+    [/অঙ্গদান/gu, 'অঙ্গ দান প্রতিস্থাপন'],
     [/ঈদুলফিতর/gu, 'ঈদুল ফিতর'],
     [/ঈদুলআযহা|ঈদুলআজহা/gu, 'ঈদুল আযহা'],
     [/আয়াতুলকুরসী|আয়াতুলকুরসি/gu, 'আয়াতুল কুরসী'],
-    [/সিজদায়েসাহু/gu, 'সিজদায়ে সাহু'],
+    [/সিজদায়েসাহু|সিজদায়ে\s*সাহু/gu, 'সাহু সিজদা'],
+    [/(?<=\s|^)[6৬](?=\s*(?:টি\s*)?(?:রোজা|রোযা|সিয়াম|ছিয়াম))/gu, 'ছয়টি'],
+    [/(?<=\s|^)[7৭](?=\s*ভাগে)/gu, 'সাত'],
+    [/(?<=\s|^)[3৩](?=\s*তালাক)/gu, 'তিন'],
   ];
 
   function expandCompoundsBn(text) {
@@ -230,9 +236,21 @@
     ['আয়েশা', 'আয়িশা'],
     ['জানাযা', 'জানাজা', 'মাইয়্যেত'],
     ['আমল', 'আদব', 'সুন্নাত'],
-    ['বিষন্নতা', 'হতাশা', 'দুশ্চিন্তা', 'অশান্তি'],
+    ['বিষন্নতা', 'হতাশা', 'দুশ্চিন্তা', 'অশান্তি', 'ডিপ্রেশন'],
     ['বিবর্তনবাদ', 'ডারউইনবাদ', 'ডারউইন'],
     ['আত্মহত্যা', 'সুইসাইড'],
+    ['ভুল', 'ভুলে', 'ভুলক্রমে', 'সাহু'],
+    ['কসর', 'ক্বছর', 'মুসাফির'],
+    ['মোজা', 'মোযা', 'মাসাহ'],
+    ['আশুরা', 'আশূরা', 'মুহাররম', 'মহররম'],
+    ['গর্ভপাত', 'অ্যাবরশন', 'এবরশন', 'এ্যাবোরশন', 'ভ্রূণ'],
+    ['টুথপেস্ট', 'টুথপেষ্ট', 'ব্রাশ', 'মিসওয়াক'],
+    ['কুলখানী', 'চল্লিশা', 'মৃত্যুবার্ষিকী'],
+    ['দত্তক', 'পালক'],
+    ['ইস্তেখারা', 'ইস্তিখারা', 'ইস্তেখারাহ'],
+    ['মোহরানা', 'মোহর', 'মহরানা', 'দেনমোহর'],
+    ['কিস্তি', 'কিস্তিতে', 'বাকিতে', 'বাকি'],
+    ['লটারি', 'লটারী', 'প্রাইজবন্ড', 'জুয়া'],
   ];
 
   const SYNONYM_MAP = new Map();
@@ -348,6 +366,25 @@
     karon: 'কারণ ভঙ্গ শর্ত', venge: 'ভঙ্গ ভেঙে নষ্ট', bhenge: 'ভঙ্গ ভেঙে নষ্ট', nosto: 'নষ্ট ভঙ্গ',
     sothik: 'সঠিক সহীহ সুন্নাহ', sahih: 'সহীহ বিশুদ্ধ হাদীস', daif: 'যঈফ দুর্বল হাদীস',
     injection: 'ইনজেকশন স্যালাইন ছিয়াম', saline: 'স্যালাইন ইনজেকশন ছিয়াম', medicine: 'ঔষধ চিকিৎসা রোজা',
+    // v5.0 Expanded Everyday Banglish & Medical/Fiqh Terms
+    vul: 'ভুল সাহু সিজদা', bhul: 'ভুল সাহু সিজদা', mistake: 'ভুল সাহু সিজদা', forget: 'ভুলে সাহু সিজদা',
+    sofor: 'সফর মুসাফির ক্বছর', safar: 'সফর মুসাফির ক্বছর', travel: 'সফর ক্বছর',
+    kosor: 'ক্বছর কসর ছালাত', kasar: 'ক্বছর কসর ছালাত', qasr: 'ক্বছর কসর ছালাত',
+    istikhara: 'ইস্তেখারাহ ইস্তেখারা ছালাত', istekhara: 'ইস্তেখারাহ ইস্তেখারা ছালাত',
+    masbuk: 'মাসবূক জামাআত ছালাত', eid: 'ঈদ ছালাত তাকবীর',
+    moja: 'মোযা মাসাহ ওযূ', masah: 'মাসাহ মোযা ওযূ', socks: 'মোযা মাসাহ',
+    toothpaste: 'টুথপেষ্ট ব্রাশ ছিয়াম', paste: 'টুথপেষ্ট ব্রাশ ছিয়াম', brush: 'ব্রাশ টুথপেষ্ট মিসওয়াক', miswak: 'মিসওয়াক ব্রাশ',
+    vag: 'ভাগে শরীক পশুতে', bhag: 'ভাগে শরীক পশুতে', goru: 'গরু পশুতে সাত ভাগে', chagol: 'ছাগল পশু কুরবানী',
+    bidaat: 'বিদআত সুন্নাত', bidah: 'বিদআত সুন্নাত', amol: 'আমল সুন্নাত',
+    bod: 'বদনযর নযর', nojor: 'বদনযর নযর রুকইয়াহ', nazar: 'বদনযর নযর রুকইয়াহ',
+    bacha: 'রক্ষা প্রতিকার বাঁচার', bachar: 'রক্ষা প্রতিকার বাঁচার',
+    blood: 'রক্ত রোগীকে দান', rokto: 'রক্ত রক্তদান', donation: 'দান রক্ত প্রতিস্থাপন', donate: 'দান রক্ত',
+    organ: 'অঙ্গ প্রতিস্থাপন দান', abortion: 'গর্ভপাত ভ্রূণ', gorvopat: 'গর্ভপাত ভ্রূণ',
+    kodor: 'লাইলাতুল কদর রামাযান', qadr: 'লাইলাতুল কদর রামাযান', ashura: 'আশূরা মুহাররম ছিয়াম',
+    shawwal: 'শাওয়াল ছয়টি ছিয়াম', arafah: 'আরাফা ছিয়াম', arafa: 'আরাফা ছিয়াম',
+    kulkhani: 'কুলখানী চল্লিশা বিদআত', chollisha: 'চল্লিশা কুলখানী বিদআত',
+    dottok: 'দত্তক পালক সন্তান', adoption: 'দত্তক পালক সন্তান',
+    jinn: 'জিন শয়তান রুকইয়াহ', jin: 'জিন শয়তান রুকইয়াহ', nonmuslim: 'অমুসলিম বিধর্মী',
   };
 
   // Everyday Banglish grammatical/function words that should NEVER be treated as unmatched Latin topic words
@@ -361,7 +398,8 @@
     'dewa', 'dewar', 'dite', 'dile', 'debo', 'dei', 'newa', 'newar', 'nite', 'nile', 'nei', 'nai',
     'bola', 'bolen', 'bolo', 'bolun', 'bolle', 'ache', 'ase', 'achen', 'thake', 'thakle', 'thaka',
     'pora', 'porar', 'pore', 'porle', 'porbo', 'porte', 'khawa', 'khele', 'khete', 'khaile',
-    'bose', 'boshe', 'utha', 'uthte', 'shona', 'shunle', 'dekha', 'dekhle', 'rakha', 'rakhle',
+    'bose', 'boshe', 'utha', 'uthte', 'shona', 'shunle', 'dekha', 'dekhle', 'rakha', 'rakhle', 'rekhe',
+    'use', 'using', 'used', 'vyabohar', 'babohar', 'din', 'dine', 'somoy',
     'na', 'nai', 'noy', 'naki', 'ba', 'othoba', 'ebong', 'ar', 'kintu', 'tobe', 'jodi', 'tahole', 'taile',
     'jonno', 'jonyo', 'theke', 'sathe', 'songe', 'moddhe', 'vitor', 'vitore', 'upor', 'upore', 'niche',
     'ami', 'amar', 'amader', 'apni', 'apnar', 'tumi', 'tomar', 'se', 'tar', 'tader', 'amra',
@@ -389,14 +427,21 @@
       'ইসলাম', 'ইসলামে', 'ইসলামের', 'ইসলামিক', 'ইসলামী', 'মুসলিম', 'মুসলমান', 'শারঈ', 'শরীয়ত', 'শরীআত',
       'প্রশ্ন', 'উত্তর', 'জবাব', 'জানতে', 'চাই', 'বলুন', 'জানান', 'বিষয়ে', 'সম্পর্কে', 'ব্যাপারে',
       'বিধান', 'হুকুম', 'মাসআলা', 'ফতোয়া', 'দলিল', 'দলিলসহ', 'আলোকে', 'অবস্থান', 'দৃষ্টিভঙ্গি',
-      'আসসালামু', 'আলাইকুম', 'সালাম', 'রাহমাতুল্লাহ', 'রাহমাতুল্লাহি', 'বারাকাতুহু', 'ওয়া',
+      'আসসালামু', 'আলাইকুম', 'রাহমাতুল্লাহ', 'রাহমাতুল্লাহি', 'বারাকাতুহু', 'ওয়া',
       'ভাই', 'ভাইয়া', 'বোন', 'আপু', 'হুজুর', 'শায়খ', 'শায়েখ', 'স্যার', 'বন্ধু',
-      'দয়া', 'অনুগ্রহ', 'প্লিজ', 'একটু', 'আচ্ছা', 'হ্যালো', 'হাই', 'আজকে', 'এখন', 'সঠিক', 'উচিত', 'করণীয়',
+      'দয়া', 'অনুগ্রহ', 'প্লিজ', 'একটু', 'আচ্ছা', 'হ্যালো', 'হাই', 'আজকে', 'এখন', 'সঠিক', 'উচিত', 'করণীয়', 'ব্যবহার',
       'what', 'why', 'how', 'when', 'where', 'who', 'which', 'is', 'are', 'do', 'does', 'can',
       'in', 'on', 'of', 'to', 'for', 'with', 'about', 'the', 'and', 'or', 'islam', 'islamic', 'muslim',
-      'assalamu', 'alaikum', 'salam', 'bhai', 'bhaiya', 'hujur', 'sheikh', 'hello', 'hi', 'hey', 'please',
+      'assalamu', 'alaikum', 'bhai', 'bhaiya', 'hujur', 'sheikh', 'hello', 'hi', 'hey', 'please',
     ].map((w) => stemBn(foldBn(w)))
   );
+
+  function stripLeadingGreeting(q) {
+    return String(q || '').replace(
+      /^\s*(?:আসসালামু\s*আলাইকুম|আস-সালামু\s*আলাইকুম|সালামু?\s*আলাইকুম|সালাম|assalamu\s*alaikum|salam)(?:\s+ওয়া\s*রাহমাতুল্লাহ(?:ি\s*ওয়া\s*বারাকাতুহু?)?)?(?:\s*(?:ভাই|ভাইয়া|বোন|হুজুর|শায়খ))?[\s,।!?\-:]+/iu,
+      ' '
+    );
+  }
 
   function isCoreToken(tok) {
     if (!tok || tok.length < 2 || /^\d+$/.test(tok)) return false;
@@ -406,13 +451,16 @@
 
   // Replace known Banglish/English words (including inflected Banglish suffixes like -er, -r, -te, -ke, -der)
   // with Bengali equivalents while preserving unknown non-Banglish English words for strict OOD abstention!
-  const BANGLISH_INFLECTION_SUFFIXES = ['gulo', 'gula', 'der', 'ter', 'tar', 'tir', 'er', 'te', 'ke', 'ta', 'ti', 'ra', 'r', 's', 'ing'];
-  function resolveBanglishWord(w) {
-    if (BANGLISH_AND_EN_MAP[w]) return BANGLISH_AND_EN_MAP[w];
-    for (const suf of BANGLISH_INFLECTION_SUFFIXES) {
-      if (w.length - suf.length >= 3 && w.endsWith(suf)) {
-        const stem = w.slice(0, -suf.length);
-        if (BANGLISH_AND_EN_MAP[stem]) return BANGLISH_AND_EN_MAP[stem];
+  const BANGLISH_INFLECTION_SUFFIXES = ['gulo', 'gula', 'der', 'ter', 'tar', 'tir', 'er', 'te', 'ke', 'ta', 'ti', 'ra', 'e', 'y', 'r', 's', 'ing'];
+  function resolveBanglishWord(rawW) {
+    const candidates = [rawW, rawW.replace(/([aeiou])\1+/g, '$1')];
+    for (const w of candidates) {
+      if (BANGLISH_AND_EN_MAP[w]) return BANGLISH_AND_EN_MAP[w];
+      for (const suf of BANGLISH_INFLECTION_SUFFIXES) {
+        if (w.length - suf.length >= 3 && w.endsWith(suf)) {
+          const stem = w.slice(0, -suf.length);
+          if (BANGLISH_AND_EN_MAP[stem]) return BANGLISH_AND_EN_MAP[stem];
+        }
       }
     }
     return null;
@@ -424,7 +472,7 @@
       const mapped = resolveBanglishWord(w);
       if (mapped) return ` ${mapped} `;
       if (w.length === 1 || BANGLISH_STOP_WORDS.has(w)) return ' ';
-      for (const suf of ['er', 'te', 'ke', 'ta', 'ti', 'ra', 'r']) {
+      for (const suf of ['er', 'te', 'ke', 'ta', 'ti', 'ra', 'e', 'y', 'r']) {
         if (w.length - suf.length >= 3 && w.endsWith(suf) && BANGLISH_STOP_WORDS.has(w.slice(0, -suf.length))) {
           return ' ';
         }
@@ -911,6 +959,278 @@
     { re: /(?:জুমা|জুমআ).*(?:দিন|আমল|আদব|সুন্নাত)/u, guardNo: /(?:খুতবা|দুইবার|মাদরাসা|রাস্তা)/u, keys: ['018deac31f383b'] },
     { re: /(?:বিষন্নতা|হতাশা|মানসিক\s*অশান্তি)/u, guardNo: /(?:আত্মহত্যা)/u, keys: ['00043ee03b3362'] },
     { re: /(?:আয়েশা|আয়িশা).*(?:বিবাহ|বিয়ে|বয়স)/u, guardNo: /(?:যুদ্ধ|উষ্ট্র)/u, keys: ['0311fba512ab9a', '1b4b346ecdd0a1'] },
+    { re: /(?:শাওয়াল).*(?:ছয়|রোজা|রোযা|সিয়াম|ছিয়াম)/u, guardNo: /(?:বৃহস্পতি)/u, keys: ['0dcde15325d912', '175b7d38ada65a'] },
+    { re: /(?:কুরবানী|কুরবানি).*(?:আকীকা|আকিকা)/u, guardNo: /(?:চাঁদ)/u, keys: ['061d832ac14fb7', '00003931c1c4b9'] },
+    { re: /(?:অমুসলিম|বিধর্মী).*(?:সালাম)/u, guardNo: /(?:পাগল)/u, keys: ['1f12aab5786d15', '14ecc78b923b2e'] },
+    { re: /(?:গর্ভপাত|ভ্রূণ)/u, guardNo: /(?:তালাক|মিলনে|জানাযা)/u, keys: ['0669b41ed22903', '1e0fe979c1b273'] },
+    { re: /(?:বদনযর|নযর\s*লাগা)/u, guardNo: /(?:আয়না)/u, keys: ['1dd580caf81a57', '1426b07ae81b0d'] },
+    { re: /(?:ছালাত|সালাত|নামাজ|নামায).*(?:ভুল|ভুলে|সাহু)/u, guardNo: /(?:প্রথম\s*বৈঠকে)/u, keys: ['1dcc814041d3e6', '0bf792ab36211a'] },
+    { re: /(?:রক্ত).*(?:দান|রোগী)/u, guardNo: /(?:ছিয়াম|রোজা|রোযা)/u, keys: ['0e5162eafdf4e6', '06621a0ab484b2'] },
+    { re: /(?:আকীকা|আক্বীক্বা|আকিকা)/u, guardNo: /(?:কুরবানী|কুরবানি|রাতে|সাত\s*দিনের\s*পূর্বে)/u, keys: ['1b4f8e35097062', '0c51dd5f69b089'] },
+    { re: /(?:মোহরানা|মহরানা|দেনমোহর)/u, guardNo: /(?:কুষ্ঠ|গালিগালাজ)/u, keys: ['19c1c06e395602', '17b38a949efb19'] },
+    { re: /(?:বিদআত|বিদ‘আত).*(?:চেনার|উপায়|সংজ্ঞা|পরিচিতি)/u, guardNo: /(?:জানাযা)/u, keys: ['10ca47a619503b', '005d9613455021'] },
+    { re: /(?:কসম|শপথ).*(?:ভাঙ|ভঙ্গ|কাফফারা)/u, guardNo: /(?:ছিয়াম|রোজা|রোযা|চুরি)/u, keys: ['0b99f332ace1f3', '00b9ccb9b5a2e1'] },
+  ];
+
+  // =========================================================================
+  // v5.0 Qur'anic Fara'id / Miras Calculator & Smart Typeahead Suggestions
+  // =========================================================================
+  function calculateQuranicMiras(opts = {}) {
+    const deceasedGender = opts.deceasedGender === 'female' ? 'female' : 'male';
+    const netEstate = Math.max(0, Number(opts.netEstate) || 0);
+    const wives = deceasedGender === 'male' ? Math.min(4, Math.max(0, Math.floor(Number(opts.wives) || 0))) : 0;
+    const husband = deceasedGender === 'female' ? (opts.husband ? 1 : 0) : 0;
+    const father = Boolean(opts.father);
+    const mother = Boolean(opts.mother);
+    const sons = Math.max(0, Math.floor(Number(opts.sons) || 0));
+    const daughters = Math.max(0, Math.floor(Number(opts.daughters) || 0));
+
+    const hasChild = sons > 0 || daughters > 0;
+    const hasSpouse = wives > 0 || husband > 0;
+    const isUmariyyatayn = !hasChild && father && mother && hasSpouse;
+
+    const fixedHeirs = [];
+    // 1. Spouse (Surah An-Nisa 4:12)
+    let spouseShare = 0;
+    if (husband === 1) {
+      spouseShare = hasChild ? 0.25 : 0.5;
+      fixedHeirs.push({
+        id: 'husband',
+        label: 'স্বামী (১ জন)',
+        rawShare: spouseShare,
+        isSpouse: true,
+        basis: hasChild ? 'সন্তান থাকায় ১/৪ অংশ (সূরা আন-নিসা ৪:১২)' : 'সন্তান না থাকায় ১/২ অংশ (সূরা আন-নিসা ৪:১২)',
+      });
+    } else if (wives > 0) {
+      spouseShare = hasChild ? 0.125 : 0.25;
+      fixedHeirs.push({
+        id: 'wives',
+        label: wives > 1 ? `স্ত্রীগণ (${toBnDigitsStr(wives)} জন একত্রে)` : 'স্ত্রী (১ জন)',
+        count: wives,
+        rawShare: spouseShare,
+        isSpouse: true,
+        basis: hasChild ? 'সন্তান থাকায় ১/৮ অংশ (সূরা আন-নিসা ৪:১২)' : 'সন্তান না থাকায় ১/৪ অংশ (সূরা আন-নিসা ৪:১২)',
+      });
+    }
+
+    // 2. Mother (Surah An-Nisa 4:11 + Umariyyatayn consensus)
+    if (mother) {
+      if (isUmariyyatayn) {
+        const remAfterSpouse = 1 - spouseShare;
+        fixedHeirs.push({
+          id: 'mother',
+          label: 'মাতা',
+          rawShare: remAfterSpouse / 3,
+          isSpouse: false,
+          basis: 'উমরিয়্যাতাইন নীতিতে স্বামী/স্ত্রীর অংশের পর অবশিষ্টাংশের ১/৩ অংশ (সাহাবীগণের ইজমা)',
+        });
+      } else {
+        fixedHeirs.push({
+          id: 'mother',
+          label: 'মাতা',
+          rawShare: hasChild ? 1 / 6 : 1 / 3,
+          isSpouse: false,
+          basis: hasChild ? 'সন্তান থাকায় ১/৬ অংশ (সূরা আন-নিসা ৪:১১)' : 'সন্তান না থাকায় ১/৩ অংশ (সূরা আন-নিসা ৪:১১)',
+        });
+      }
+    }
+
+    // 3. Father fixed share when children exist (Surah An-Nisa 4:11)
+    if (father && hasChild) {
+      fixedHeirs.push({
+        id: 'father',
+        label: 'পিতা',
+        rawShare: 1 / 6,
+        isSpouse: false,
+        getsResidueToo: sons === 0 && daughters > 0,
+        basis:
+          sons > 0
+            ? 'পুত্র সন্তান থাকায় নির্ধারিত ১/৬ অংশ (সূরা আন-নিসা ৪:১১)'
+            : 'কন্যা সন্তান থাকায় নির্ধারিত ১/৬ অংশ + অবশিষ্ট আসাবা (সহীহ বুখারী ৬৭৩২)',
+      });
+    }
+
+    // 4. Daughters when no son exists (Surah An-Nisa 4:11)
+    if (sons === 0 && daughters > 0) {
+      fixedHeirs.push({
+        id: 'daughters',
+        label: daughters > 1 ? `কন্যাগণ (${toBnDigitsStr(daughters)} জন একত্রে)` : 'কন্যা (১ জন)',
+        count: daughters,
+        rawShare: daughters === 1 ? 0.5 : 2 / 3,
+        isSpouse: false,
+        basis: daughters === 1 ? 'একমাত্র কন্যা হওয়ায় ১/২ অংশ (সূরা আন-নিসা ৪:১১)' : 'একাধিক কন্যা হওয়ায় একত্রে ২/৩ অংশ (সূরা আন-নিসা ৪:১১)',
+      });
+    }
+
+    let sumFixed = fixedHeirs.reduce((acc, h) => acc + h.rawShare, 0);
+    let caseNote = 'স্বাভাবিক কুরআনিক বণ্টন (সূরা আন-নিসা ৪:১১–১২)';
+    const results = [];
+
+    if (sumFixed > 1.000001) {
+      // Awl (proportional reduction)
+      caseNote = 'আওল (Awl) নীতি প্রযোজ্য — নির্ধারিত অংশের যোগফল ১-এর বেশি হওয়ায় আনুপাতিক হারে সমন্বিত';
+      for (const h of fixedHeirs) {
+        results.push({ ...h, finalShare: h.rawShare / sumFixed });
+      }
+    } else {
+      const residue = Math.max(0, 1 - sumFixed);
+      for (const h of fixedHeirs) {
+        results.push({ ...h, finalShare: h.rawShare });
+      }
+
+      if (residue > 0.000001) {
+        if (sons > 0) {
+          const totalUnits = sons * 2 + daughters;
+          const sonShareTotal = residue * ((sons * 2) / totalUnits);
+          results.push({
+            id: 'sons',
+            label: sons > 1 ? `পুত্রগণ (${toBnDigitsStr(sons)} জন একত্রে)` : 'পুত্র (১ জন)',
+            count: sons,
+            finalShare: sonShareTotal,
+            basis: daughters > 0 ? 'আসাবা হিসেবে পুত্র:কন্যা = ২:১ অনুপাতে (সূরা আন-নিসা ৪:১১)' : 'আসাবা হিসেবে অবশিষ্ট সম্পূর্ণ অংশ (সহীহ বুখারী ৬৭৩২)',
+          });
+          if (daughters > 0) {
+            results.push({
+              id: 'daughters_asaba',
+              label: daughters > 1 ? `কন্যাগণ (${toBnDigitsStr(daughters)} জন একত্রে)` : 'কন্যা (১ জন)',
+              count: daughters,
+              finalShare: residue * (daughters / totalUnits),
+              basis: 'পুত্রের সাথে আসাবা বিল-গাইর (২:১ অনুপাতে — সূরা আন-নিসা ৪:১১)',
+            });
+          }
+        } else if (father && !hasChild) {
+          results.push({
+            id: 'father_asaba',
+            label: 'পিতা',
+            finalShare: residue,
+            basis: 'সন্তান না থাকায় আসাবা হিসেবে অবশিষ্ট সম্পূর্ণ অংশ (সহীহ বুখারী ৬৭৩২)',
+          });
+        } else if (father && sons === 0 && daughters > 0) {
+          const fRow = results.find((r) => r.id === 'father');
+          if (fRow) fRow.finalShare += residue;
+        } else {
+          // Radd to blood fixed heirs (Mother / Daughters) if no Asabah
+          const bloodHeirs = results.filter((r) => !r.isSpouse);
+          if (bloodHeirs.length > 0) {
+            caseNote = 'রাদ্দ (Radd) নীতি প্রযোজ্য — কোনো আসাবা না থাকায় অবশিষ্ট অংশ রক্তসম্পর্কীয় অংশীদারদের মাঝে আনুপাতিক প্রত্যর্পণ *(ভাই-বোন জীবিত না থাকলে)*';
+            const bloodSum = bloodHeirs.reduce((s, r) => s + r.finalShare, 0);
+            for (const bh of bloodHeirs) {
+              bh.finalShare += residue * (bh.finalShare / bloodSum);
+            }
+          } else if (results.length === 1) {
+            caseNote = 'অন্য কোনো ওয়ারিশ বা আসাবা না থাকায় অবশিষ্ট অংশ অন্তর্ভুক্ত';
+            results[0].finalShare += residue;
+          }
+        }
+      }
+    }
+
+    const formattedHeirs = results.map((r) => {
+      const pct = Number((r.finalShare * 100).toFixed(2));
+      const amt = netEstate > 0 ? Number((netEstate * r.finalShare).toFixed(2)) : null;
+      return {
+        label: r.label,
+        count: r.count || 1,
+        percentage: pct,
+        amount: amt,
+        basis: r.basis,
+      };
+    });
+    if (formattedHeirs.length > 0) {
+      const pctDiff = Number((100 - formattedHeirs.reduce((s, h) => s + h.percentage, 0)).toFixed(2));
+      if (Math.abs(pctDiff) > 0 && Math.abs(pctDiff) <= 0.05) {
+        let maxIdx = 0;
+        for (let i = 1; i < formattedHeirs.length; i++) {
+          if (formattedHeirs[i].percentage > formattedHeirs[maxIdx].percentage) maxIdx = i;
+        }
+        formattedHeirs[maxIdx].percentage = Number((formattedHeirs[maxIdx].percentage + pctDiff).toFixed(2));
+      }
+      if (netEstate > 0) {
+        const amtDiff = Number((netEstate - formattedHeirs.reduce((s, h) => s + (h.amount || 0), 0)).toFixed(2));
+        if (Math.abs(amtDiff) > 0 && Math.abs(amtDiff) <= 1.0) {
+          let maxIdx = 0;
+          for (let i = 1; i < formattedHeirs.length; i++) {
+            if ((formattedHeirs[i].amount || 0) > (formattedHeirs[maxIdx].amount || 0)) maxIdx = i;
+          }
+          formattedHeirs[maxIdx].amount = Number(((formattedHeirs[maxIdx].amount || 0) + amtDiff).toFixed(2));
+        }
+      }
+    }
+
+    return {
+      net_estate: netEstate,
+      case_note: caseNote,
+      heirs: formattedHeirs.map((h) => {
+        const perPersonAmt = h.amount !== null && h.count > 1 ? Number((h.amount / h.count).toFixed(2)) : null;
+        return {
+          ...h,
+          percentage_bn: toBnDigitsStr(h.percentage.toFixed(2)) + '%',
+          amount_bn: h.amount !== null ? toBnDigitsStr(h.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })) + ' টাকা' : null,
+          per_person_bn:
+            perPersonAmt !== null ? `প্রত্যেকে ${toBnDigitsStr(perPersonAmt.toLocaleString('en-IN', { maximumFractionDigits: 2 }))} টাকা` : null,
+        };
+      }),
+    };
+  }
+
+  const SUGGESTION_BANK = [
+    'ওযু ভাঙ্গার কারণ কয়টি ও কি কি?',
+    'ফরজ গোসলের সঠিক নিয়ম কী?',
+    'তায়াম্মুম করার সঠিক নিয়ম কী?',
+    'মোযার উপর মাসাহ করার নিয়ম ও সময়সীমা কতক্ষণ?',
+    'সিজদায়ে সাহু দেওয়ার সঠিক নিয়ম কী?',
+    'নামাজে মনোযোগ বা খুশু বাড়ানোর উপায় কী?',
+    'ফজরের নামাজ কাযা হলে কখন ও কীভাবে পড়তে হবে?',
+    'মাসবুক ব্যক্তি কীভাবে সালাত পূর্ণ করবে?',
+    'সফরে কসর নামাজ কত দিন পড়া যায়?',
+    'বিতরের নামাজ পড়ার সঠিক নিয়ম কী?',
+    'তাহাজ্জুদ নামাজ কত রাকাত এবং কখন পড়তে হয়?',
+    'তারাবীহর সালাত কত রাকআত?',
+    'ইস্তেখারার নামাজ ও দোয়া পড়ার নিয়ম কী?',
+    'জানাযার নামাজের দোয়া ও সঠিক নিয়ম কী?',
+    'জুমআর দিনে করণীয় সুন্নাত আমল কী কী?',
+    'নারীদের মসজিদে গিয়ে সালাত আদায় করা কি জায়েয?',
+    'ফরয সালাতের পর সম্মিলিত মোনাজাত করা যাবে কি?',
+    'রোজা অবস্থায় ইনজেকশন বা স্যালাইন নিলে কি রোজা ভাঙে?',
+    'রোজা রেখে টুথপেস্ট বা মিসওয়াক ব্যবহার করা যাবে কি?',
+    'শাওয়ালের ৬ রোজার ফযীলত ও নিয়ম কী?',
+    'আরাফার রোজা কবে রাখতে হবে?',
+    '৫ লক্ষ টাকায় কত টাকা যাকাত দিতে হবে?',
+    'স্বর্ণ ও রৌপ্যের নিসাব ও যাকাত আদায়ের নিয়ম কী?',
+    'ফিতরা কত টাকা ও কখন আদায় করতে হয়?',
+    'একই পশুতে কুরবানী ও আকীকা দেওয়া যাবে কি?',
+    'রাগের মাথায় তিন তালাক দিলে কি তালাক হয়ে যাবে?',
+    'খুলা তালাকের শারঈ নিয়ম কী?',
+    'পিতার সম্পত্তিতে মেয়েরা কতটুকু অংশ পাবে?',
+    'পিতা-মাতার মৃত্যুর পর সন্তানের করণীয় কী?',
+    'ইসলামে একাধিক বিবাহ বা বহুবিবাহের বিধান কী?',
+    'বিকাশ বা নগদ ক্যাশব্যাক নেওয়া কি জায়েয?',
+    'বিটকয়েন বা ক্রিপ্টোকারেন্সি ট্রেডিং কি হালাল?',
+    'শেয়ার ব্যবসা কি হালাল নাকি হারাম?',
+    'সুদের টাকা দিয়ে কী করা উচিত?',
+    'গান-বাজনা ও মিউজিক শোনা কি হারাম?',
+    'দাড়ি রাখা কি ফরয? দাড়ি কাটার বিধান কী?',
+    'ছবি তোলা বা ভিডিও করা কি জায়েয?',
+    'তাবীয ঝুলানো কি শিরক?',
+    'বদনজর ও যাদুটোনা থেকে বাঁচার রুকইয়াহ কী?',
+    'মাজারে মানত বা সিজদা করা কি শিরক?',
+    'শবে বরাতের রোজা ও আমলের বিধান কী?',
+    'মীলাদ মাহফিল ও কিয়াম করা কি জায়েয?',
+    'আল্লাহর অস্তিত্বের যৌক্তিক ও বৈজ্ঞানিক প্রমাণ কী?',
+    'একজন স্রষ্টা থাকলে পৃথিবীতে দুঃখ-কষ্ট কেন আছে?',
+    'কুরআন কীভাবে অবিকৃতভাবে সংরক্ষিত হয়েছে?',
+    'নবীজি ﷺ কি নূরের তৈরি নাকি মাটির তৈরি?',
+    'আয়েশা (রাঃ)-এর বিবাহের বয়স নিয়ে অভিযোগের জবাব কী?',
+    'ডারউইনের বিবর্তনবাদ সম্পর্কে ইসলামের অবস্থান কী?',
+    'ইসলামে বিষন্নতা, হতাশা ও মানসিক অশান্তি থেকে মুক্তির উপায় কী?',
+    'অমুসলিমকে সালাম দেওয়া যাবে কি?',
+    'আয়াতুল কুরসী অর্থসহ বলো',
+    'সাইয়্যিদুল ইস্তিগফার অর্থসহ বলো',
+    'ঘুমানোর আগের দোয়া কী?',
+    'খাওয়ার শুরু ও শেষের দোয়া বলো',
+    'আজকের নামাজের সময়সূচি দাও',
+    'আজকে নতুন কি কি লেখা বা ভিডিও এসেছে?',
+    'একটা ইসলামিক কুইজ ধরো',
   ];
 
   const MANDATORY_ANCHOR_STEMS = new Set(
@@ -1643,6 +1963,37 @@
       return getHijriDateBn(dateObj);
     },
 
+    calculateMiras(opts = {}) {
+      return calculateQuranicMiras(opts);
+    },
+
+    suggest(inputText, limit = 5) {
+      const raw = String(inputText || '').trim();
+      if (raw.length < 2) return [];
+      const expanded = translateBanglishAndEnglish(raw);
+      const qFold = foldBn(expanded).trim();
+      const qToks = tokenizeFolded(expanded, true).filter((t) => t.length >= 2);
+      const scored = [];
+      for (const item of SUGGESTION_BANK) {
+        const iFold = foldBn(item);
+        let sc = 0;
+        if (iFold.startsWith(qFold)) sc += 10;
+        else if (qFold.length >= 2 && iFold.includes(qFold)) sc += 6;
+        for (const qt of qToks) {
+          if (iFold.includes(qt)) sc += 3;
+          const syns = SYNONYM_MAP.get(qt);
+          if (syns) {
+            for (const syn of syns) {
+              if (iFold.includes(syn)) { sc += 2.2; break; }
+            }
+          }
+        }
+        if (sc > 0 && item !== raw) scored.push([sc, item]);
+      }
+      scored.sort((a, b) => b[0] - a[0]);
+      return scored.slice(0, limit).map((x) => x[1]);
+    },
+
     async getRecent() {
       return fetchWithFallback('recent-data.json');
     },
@@ -1834,8 +2185,21 @@
       await this.init();
       const { query: contextualQuery, usedHistory } = augmentQueryWithHistory(question, history);
 
+      // Guard: Pure secular live-utility / sports-score / fare / coding / recipe queries without Islamic framing
+      const isSecularUtility =
+        /(?:ম্যাচের?\s*স্কোর|খেলার?\s*স্কোর|লাইভ\s*স্কোর|(?:ট্রেনের?|বাসের?|বিমানের?|লঞ্চের?)\s*(?:টিকেট\s*|টিকিট\s*)?ভাড়া\s*কত|আবহাওয়া\s*কেমন|তাপমাত্রা\s*কত|(?:বিরিয়ানি|খিচুড়ি|কেক|রান্না\s*করার)\s*রেসিপি|(?:পাইথন|পাইথনে|জাভাস্ক্রিপ্ট|রিয়্যাক্ট|প্রোগ্রামিং).*কোড)/iu.test(
+          question
+        );
+      const hasIslamicFraming =
+        /(?:ইসলাম|শরীআত|শরীয়ত|জায়েয|জায়েজ|হালাল|হারাম|গুনাহ|পাপ|সওয়াব|ছওয়াব|বিধান|হুকুম|মাসআলা|ফতোয়া|কুরআন|হাদীস|হাদিস|সুন্নাত|সুন্নাহ)/iu.test(
+          question
+        );
+      if (isSecularUtility && !hasIslamicFraming) {
+        return this._notFoundPayload(question, [], [], t0);
+      }
+
       // Stage 1: Linguistic expansion & Concept-Group shard retrieval
-      const augQuery = translateBanglishAndEnglish(contextualQuery);
+      const augQuery = translateBanglishAndEnglish(stripLeadingGreeting(contextualQuery));
       const rawStems = [...new Set(tokenizeFolded(augQuery, true))];
       const coreStems = rawStems.filter(isCoreToken);
 
@@ -1928,11 +2292,16 @@
             }
           }
         }
+        grp.titleHits = titleHits;
+        grp.bodyHits = bodyHits;
+      }
 
+      for (const grp of conceptGroups) {
+        const { titleHits, bodyHits } = grp;
         const unionCount = Math.max(titleHits.size, bodyHits.size);
         if (unionCount === 0) {
-          // Unknown/unmatched token in DAWAH X still contributes to denominator so OOD queries drop in coverage!
-          grp.idf = 5.5;
+          // Unknown/unmatched token in DAWAH X gets true max corpus IDF (~9.8) so OOD queries cleanly abstain!
+          grp.idf = 9.8;
           totalCoreIdf += grp.idf;
           continue;
         }
@@ -1964,10 +2333,13 @@
       const bodyCompletePool = [];
       for (let id = 0; id < N; id++) {
         if (docScores[id] <= 0.1) continue;
-        // Quick side bit pre-filter when fatwa/dawah filter requested
-        if (sourceFilter === 'dawah') {
-          const isFatwaSide = ((this.sideBytes[id >> 3] || 0) >> (id & 7)) & 1;
-          if (isFatwaSide === 1) continue; // exclude 'at' & 'ai'
+        // Quick side bit pre-filter when fatwa/dawah or single-publication filter requested
+        const isFatwaSide = ((this.sideBytes[id >> 3] || 0) >> (id & 7)) & 1;
+        if ((sourceFilter === 'dawah' || ['fm', 'ra', 'iz', 'ia', 'ik'].includes(sourceFilter)) && isFatwaSide === 1) {
+          continue; // exclude 'at' & 'ai'
+        }
+        if (['at', 'ai'].includes(sourceFilter) && isFatwaSide === 0) {
+          continue; // include only 'at' & 'ai'
         }
         const cov = Math.min(1.0, docMatchedIdf[id] / totalCoreIdf);
         if (cov < 0.22) continue;
@@ -1981,7 +2353,8 @@
 
       stage1.sort((a, b) => b[1] - a[1]);
       bodyCompletePool.sort((a, b) => b[2] - a[2] || b[1] - a[1]);
-      const topStage1 = stage1.slice(0, 24);
+      const s1Limit = ['at', 'ai', 'ik', 'fm', 'ra', 'iz', 'ia', 'article'].includes(sourceFilter) ? 56 : 24;
+      const topStage1 = stage1.slice(0, s1Limit);
       const pickedIds = new Set(topStage1.map((x) => x[0]));
       for (const bc of bodyCompletePool.slice(0, 6)) {
         if (!pickedIds.has(bc[0])) {
@@ -2028,7 +2401,7 @@
       const queryHasOtherRel = OTHER_RELIGION_RE.test(question);
       const queryHasNegException = /(?:না\s*মেনে|ছাড়া\s*পড়লে|সন্দেহ|৪১\s*দিন|ভুলে\s*গেলে)/u.test(question);
       const queryHasPhysicalInjury = /(?:হাত|পা|ব্যান্ডেজ|প্লাস্টার|ক্ষত|যখম)/u.test(question);
-      const queryHasNarrowTrigger = /(?:উট|গোশত|কৃমি|ধূমপান|দুধ|হাঁটু|পেঁয়াজ|রসুন|ছানা|জুতা|হিজড়া|মুনাজাত)/u.test(question);
+      const queryHasNarrowTrigger = /(?:উট|গোশত|কৃমি|ধূমপান|দুধ|হাঁটু|পেঁয়াজ|রসুন|ছানা|জুতা|হিজড়া|মুনাজাত|জানাযা|জানাজা)/u.test(question);
 
       const reranked = [];
       const seenTitles = new Set();
@@ -2124,7 +2497,7 @@
         if (!queryHasPhysicalInjury && /(?:হাত-পা\s*ভাঙ্গার|ব্যান্ডেজ)/u.test(doc.clean_title)) {
           specificityAdj -= 0.22;
         }
-        if (!queryHasNarrowTrigger && /(?:উটের\s*গোশত|কৃমি\s*বের|ধূমপান\s*করলে|দুধ\s*পান|হাঁটুর\s*উপরে|ছানা\s*পড়া|জুতা\s*পরে|হিজড়া|সম্মিলিতভাবে\s*মুনাজাত)/u.test(doc.clean_title)) {
+        if (!queryHasNarrowTrigger && /(?:উটের\s*গোশত|কৃমি\s*বের|ধূমপান\s*করলে|দুধ\s*পান|হাঁটুর\s*উপরে|ছানা\s*পড়া|জুতা\s*পরে|হিজড়া|সম্মিলিতভাবে\s*মুনাজাত|জানাযার\s*ছালাত)/u.test(doc.clean_title)) {
           specificityAdj -= 0.19;
         }
         if (winInfo.isSubheadingMatch && winInfo.windowCov >= 0.85) {
@@ -2165,7 +2538,8 @@
         this.getSeriesIndex(),
       ]);
 
-      if (!reranked.length || reranked[0].confidence < 0.26 || reranked[0].core_coverage < 0.25) {
+      const minCoreCov = conceptGroups.length >= 4 ? 0.42 : 0.32;
+      if (!reranked.length || reranked[0].confidence < 0.36 || reranked[0].core_coverage < minCoreCov) {
         return this._notFoundPayload(question, reranked.slice(0, 3), videos, t0);
       }
 
@@ -2239,9 +2613,18 @@
       const expSet = new Set();
       conceptGroups.forEach((g) => g.terms.forEach((t) => expSet.add(t)));
 
-      const selectedParas = selectBestParagraphs(proseDoc, coreSet, expSet, 4, 1500);
-      const directAnswer = selectedParas[0] || trimCleanly(proseDoc.opening_ruling, 500);
-      const explanationParas = selectedParas.slice(1);
+      const selectedParas = selectBestParagraphs(proseDoc, coreSet, expSet, 5, 1650);
+      let directAnswer = selectedParas[0] || trimCleanly(proseDoc.opening_ruling, 500);
+      let expStartIdx = 1;
+      while (
+        expStartIdx < selectedParas.length &&
+        (directAnswer.length < 85 || /[:ঃ\-–—]$/.test(directAnswer.trim()))
+      ) {
+        directAnswer = `${directAnswer} ${selectedParas[expStartIdx]}`.trim();
+        expStartIdx++;
+      }
+      directAnswer = trimCleanly(directAnswer, 580);
+      const explanationParas = selectedParas.slice(expStartIdx, expStartIdx + 3);
 
       const additionalPerspectives = [];
       for (const sec of reranked.slice(1, 4)) {

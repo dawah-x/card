@@ -445,6 +445,46 @@ BANGLISH_AND_EN_MAP: Dict[str, str] = {
     "pant": "প্যান্ট টাখনু পোশাক",
     "chobi": "ছবি মূর্তি ভিডিও",
     "sigaret": "সিগারেট ধূমপান",
+    # v5.0 Expanded Everyday Banglish & Medical/Fiqh Terms
+    "vul": "ভুল সাহু সিজদা",
+    "bhul": "ভুল সাহু সিজদা",
+    "sofor": "সফর মুসাফির ক্বছর",
+    "safar": "সফর মুসাফির ক্বছর",
+    "kosor": "ক্বছর কসর ছালাত",
+    "kasar": "ক্বছর কসর ছালাত",
+    "qasr": "ক্বছর কসর ছালাত",
+    "istikhara": "ইস্তেখারাহ ইস্তেখারা ছালাত",
+    "istekhara": "ইস্তেখারাহ ইস্তেখারা ছালাত",
+    "masbuk": "মাসবূক জামাআত ছালাত",
+    "eid": "ঈদ ছালাত তাকবীর",
+    "moja": "মোযা মাসাহ ওযূ",
+    "masah": "মাসাহ মোযা ওযূ",
+    "toothpaste": "টুথপেষ্ট ব্রাশ ছিয়াম",
+    "paste": "টুথপেষ্ট ব্রাশ ছিয়াম",
+    "brush": "ব্রাশ টুথপেষ্ট মিসওয়াক",
+    "miswak": "মিসওয়াক ব্রাশ",
+    "vag": "ভাগে শরীক পশুতে",
+    "bhag": "ভাগে শরীক পশুতে",
+    "goru": "গরু পশুতে সাত ভাগে",
+    "bidaat": "বিদআত সুন্নাত",
+    "bidah": "বিদআত সুন্নাত",
+    "bod": "বদনযর নযর",
+    "nojor": "বদনযর নযর রুকইয়াহ",
+    "nazar": "বদনযর নযর রুকইয়াহ",
+    "bacha": "রক্ষা প্রতিকার বাঁচার",
+    "bachar": "রক্ষা প্রতিকার বাঁচার",
+    "blood": "রক্ত রোগীকে দান",
+    "rokto": "রক্ত রক্তদান",
+    "donation": "দান রক্ত প্রতিস্থাপন",
+    "organ": "অঙ্গ প্রতিস্থাপন দান",
+    "abortion": "গর্ভপাত ভ্রূণ",
+    "gorvopat": "গর্ভপাত ভ্রূণ",
+    "shawwal": "শাওয়াল ছয়টি ছিয়াম",
+    "ashura": "আশূরা মুহাররম ছিয়াম",
+    "arafah": "আরাফা ছিয়াম",
+    "kulkhani": "কুলখানী চল্লিশা বিদআত",
+    "chollisha": "চল্লিশা কুলখানী বিদআত",
+    "dottok": "দত্তক পালক সন্তান",
 }
 
 BANGLISH_STOP_WORDS: Set[str] = {
@@ -457,7 +497,8 @@ BANGLISH_STOP_WORDS: Set[str] = {
     "dewa", "dewar", "dite", "dile", "debo", "newa", "newar", "nite", "nile", "nei", "nai",
     "bola", "bolen", "bolo", "bolun", "ache", "ase", "thake", "thakle",
     "pora", "porar", "pore", "porle", "porbo", "porte", "khawa", "khele", "khete",
-    "bose", "boshe", "utha", "uthte", "rakha", "rakhle",
+    "bose", "boshe", "utha", "uthte", "rakha", "rakhle", "rekhe",
+    "use", "using", "used", "vyabohar", "babohar",
     "na", "noy", "naki", "ba", "othoba", "ebong", "ar", "kintu", "tobe", "jodi", "tahole",
     "jonno", "jonyo", "theke", "sathe", "songe", "moddhe", "upor", "upore", "niche",
     "ami", "amar", "amader", "apni", "apnar", "tumi", "tomar", "se", "tar", "tader", "amra",
@@ -484,15 +525,15 @@ GENERIC_QUERY_WORDS: Set[str] = {
         "প্রশ্ন", "উত্তর", "জানতে", "চাই", "বলুন", "জানান", "দয়া", "প্লিজ", "বিষয়ে", "সম্পর্কে", "ব্যাপারে",
         "বিধান", "হুকুম", "নিয়ম", "মাসআলা", "ফতোয়া", "দৃষ্টিতে", "মতে", "আলোকে",
         # Conversational greetings & polite address words inside questions
-        "আসসালামু", "আলাইকুম", "সালাম", "রাহমাতুল্লাহ", "রাহমাতুল্লাহি", "বারাকাতুহু", "ওয়া",
+        "আসসালামু", "আলাইকুম", "রাহমাতুল্লাহ", "রাহমাতুল্লাহি", "বারাকাতুহু", "ওয়া",
         "ভাই", "ভাইয়া", "বোন", "আপু", "হুজুর", "শায়খ", "শায়েখ", "স্যার", "বন্ধু",
-        "দয়া", "অনুগ্রহ", "প্লিজ", "একটু", "আচ্ছা", "হ্যালো", "হাই",
+        "দয়া", "অনুগ্রহ", "প্লিজ", "একটু", "আচ্ছা", "হ্যালো", "হাই", "ব্যবহার",
         # English / Banglish stop & address words
         "what", "why", "how", "when", "where", "who", "which", "is", "are", "was", "were",
         "do", "does", "did", "can", "could", "should", "would", "will", "in", "on", "of",
         "to", "for", "with", "about", "from", "the", "a", "an", "and", "or", "if", "it",
         "islam", "islamic", "muslim", "muslims", "ruling", "according", "tell", "me", "please",
-        "assalamu", "alaikum", "salam", "bhai", "bhaiya", "hujur", "sheikh", "hello", "hi", "hey",
+        "assalamu", "alaikum", "bhai", "bhaiya", "hujur", "sheikh", "hello", "hi", "hey",
     ]
 }
 
@@ -510,7 +551,7 @@ IDENTITY_PATTERNS = re.compile(
 )
 
 
-_BANGLISH_INFLECTIONS = ("gulo", "gula", "der", "ter", "tar", "tir", "er", "te", "ke", "ta", "ti", "ra", "r", "s", "ing")
+_BANGLISH_INFLECTIONS = ("gulo", "gula", "der", "ter", "tar", "tir", "er", "te", "ke", "ta", "ti", "ra", "e", "y", "r", "s", "ing")
 _COMPOUND_BN = [
     ("পিতামাতা", "পিতা মাতা"),
     ("মাবাবা", "মা বাবা পিতা মাতা"),
@@ -518,7 +559,14 @@ _COMPOUND_BN = [
     ("ভাইবোন", "ভাই বোন"),
     ("ছেলেমেয়ে", "ছেলে মেয়ে"),
     ("শবেবরাত", "শবে বরাত"),
-    ("শবেকদর", "শবে কদর"),
+    ("শবে কদর", "শবে কদর লাইলাতুল কদর"),
+    ("শবেকদর", "শবে কদর লাইলাতুল কদর"),
+    ("বদ নজর", "বদনযর নযর রুকইয়াহ"),
+    ("বদনজর", "বদনযর নযর রুকইয়াহ"),
+    ("রক্তদান", "রক্ত দান রোগীকে"),
+    ("অঙ্গদান", "অঙ্গ দান প্রতিস্থাপন"),
+    ("সিজদায়ে সাহু", "সাহু সিজদা"),
+    ("সিজদায়েসাহু", "সাহু সিজদা"),
     ("ঈদুলফিতর", "ঈদুল ফিতর"),
     ("ঈদুলআযহা", "ঈদুল আযহা"),
 ]
@@ -530,17 +578,18 @@ def translate_banglish_and_english(raw_query: str) -> Tuple[str, List[str]]:
 
     def _repl(match: re.Match[str]) -> str:
         raw_w = match.group(0)
-        w = raw_w.lower()
-        if w in BANGLISH_AND_EN_MAP:
-            mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
-            return f" {BANGLISH_AND_EN_MAP[w]} "
-        for suf in _BANGLISH_INFLECTIONS:
-            if len(w) - len(suf) >= 3 and w.endswith(suf):
-                stem = w[: -len(suf)]
-                if stem in BANGLISH_AND_EN_MAP:
-                    mapped_phrases.append(BANGLISH_AND_EN_MAP[stem])
-                    return f" {BANGLISH_AND_EN_MAP[stem]} "
-        if len(w) == 1 or w in BANGLISH_STOP_WORDS:
+        low = raw_w.lower()
+        for w in (low, re.sub(r"([aeiou])\1+", r"\1", low)):
+            if w in BANGLISH_AND_EN_MAP:
+                mapped_phrases.append(BANGLISH_AND_EN_MAP[w])
+                return f" {BANGLISH_AND_EN_MAP[w]} "
+            for suf in _BANGLISH_INFLECTIONS:
+                if len(w) - len(suf) >= 3 and w.endswith(suf):
+                    stem = w[: -len(suf)]
+                    if stem in BANGLISH_AND_EN_MAP:
+                        mapped_phrases.append(BANGLISH_AND_EN_MAP[stem])
+                        return f" {BANGLISH_AND_EN_MAP[stem]} "
+        if len(low) == 1 or low in BANGLISH_STOP_WORDS:
             return " "
         return raw_w
 

@@ -1730,3 +1730,233 @@ body.font-xl .drawer-html-content {
     display: none;
   }
 }
+
+/* ===== v5.0 Smart Typeahead, Fara'id Miras Calculator, Digital Tasbih & Reader Search ===== */
+.composer-inner {
+  position: relative;
+}
+
+.suggest-dropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  background: var(--surface-1);
+  border: 1px solid var(--gold-border);
+  border-radius: 14px;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  z-index: 55;
+}
+
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 9px 14px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.suggest-item:last-child {
+  border-bottom: none;
+}
+
+.suggest-item:hover,
+.suggest-item.active {
+  background: var(--gold-dim);
+  color: var(--gold-bright);
+}
+
+.suggest-icon {
+  color: var(--gold);
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.drawer-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  flex-wrap: wrap;
+}
+
+.reader-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--gold-dim);
+  border: 1px solid var(--gold-border);
+  color: var(--gold-bright);
+  white-space: nowrap;
+}
+
+mark.reader-hl {
+  background: rgba(245, 180, 0, 0.34);
+  color: inherit;
+  padding: 0 2px;
+  border-radius: 3px;
+}
+
+/* Fara'id / Miras Calculator */
+.miras-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.miras-label {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.miras-note-banner {
+  padding: 9px 13px;
+  border-radius: 10px;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  color: var(--emerald);
+  font-size: 12.8px;
+  font-weight: 600;
+}
+
+.miras-results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.miras-row {
+  padding: 10px 13px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.miras-row-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.miras-row-title {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.miras-row-val {
+  font-weight: 700;
+  color: var(--gold-bright);
+  font-size: 14px;
+}
+
+.miras-bar-track {
+  height: 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.08);
+  margin: 6px 0;
+  overflow: hidden;
+}
+
+.miras-bar-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, var(--emerald), var(--gold));
+}
+
+.miras-row-basis {
+  font-size: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Digital Tasbih Counter */
+.tasbih-display-card {
+  text-align: center;
+  padding: 18px 14px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.tasbih-arabic {
+  font-size: 27px;
+  line-height: 1.6;
+  color: var(--gold-bright);
+  margin-bottom: 4px;
+  font-family: "Traditional Arabic", "Amiri", serif;
+}
+
+.tasbih-meaning {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin-bottom: 14px;
+}
+
+.tasbih-tap-circle {
+  width: 158px;
+  height: 158px;
+  border-radius: 50%;
+  margin: 0 auto 8px;
+  border: 3px solid var(--gold);
+  background: radial-gradient(circle at 35% 30%, rgba(245, 180, 0, 0.2), rgba(16, 185, 129, 0.08));
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35), inset 0 0 18px rgba(245, 180, 0, 0.12);
+  transition: transform 0.09s ease, box-shadow 0.16s ease, border-color 0.2s ease;
+  user-select: none;
+}
+
+.tasbih-tap-circle:active {
+  transform: scale(0.94);
+}
+
+.tasbih-tap-circle.completed {
+  border-color: var(--emerald);
+  box-shadow: 0 0 28px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.2);
+}
+
+.tasbih-count-num {
+  font-size: 40px;
+  font-weight: 800;
+  color: var(--gold-bright);
+  line-height: 1.1;
+}
+
+.tasbih-target-lbl {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 3px;
+}
+
+@media (max-width: 640px) {
+  .miras-form-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
