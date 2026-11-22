@@ -49,11 +49,30 @@ export function handleHealth(env) {
   });
 }
 
-function buildMessages({ question, mode, history, ragContext, evidences }) {
+function getDhakaDateTimeSummary() {
+  try {
+    return new Intl.DateTimeFormat('bn-BD', {
+      timeZone: 'Asia/Dhaka',
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(new Date());
+  } catch (_) {
+    return '';
+  }
+}
+
+function buildMessages({ question, mode, history, ragContext, evidences, headline, primaryVerdict }) {
   const cleanQ = String(question || '').trim().slice(0, 1400);
   const safeHistory = Array.isArray(history) ? history.slice(-8) : [];
   const safeRag = Array.isArray(ragContext) ? ragContext.slice(0, 5) : [];
   const safeEvidences = Array.isArray(evidences) ? evidences.slice(0, 5) : [];
+  const cleanHeadline = String(headline || '').trim().slice(0, 260);
+  const cleanVerdict = String(primaryVerdict || '').trim().slice(0, 900);
 
   // Pull previous turn's grounded context if user is asking a conversational follow-up ("আরেকটু সহজ করে বোঝাও", "তাহলে আমার কী করণীয়?")
   let inheritedContext = '';
@@ -86,16 +105,16 @@ function buildMessages({ question, mode, history, ragContext, evidences }) {
   let maxTokens = 900;
 
   if (mode === 'grounded' && safeRag.length > 0) {
-    temperature = 0.16;
+    temperature = 0.12;
     maxTokens = 1300;
     systemPrompt =
       'তুমি "DAWAH X AI" — DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/)-এর অফিসিয়াল দলিলভিত্তিক ইসলামিক প্রশ্নোত্তর এআই।\n' +
       'তোমার একমাত্র কাজ হলো ব্যবহারকারীর প্রশ্নটি গভীরভাবে বুঝে শুধুমাত্র নিচে প্রদত্ত DAWAH X-এর যাচাইকৃত ফতোয়া, প্রবন্ধ ও দলিলের আলোকে একদম স্পষ্ট, প্রামাণ্য, প্রাঞ্জল ও সুবিন্যস্ত উত্তর প্রদান করা।\n\n' +
       'উত্তর লেখার কঠোর নীতিমালা:\n' +
-      '১. শতভাগ দলিলনির্ভরতা (Zero Hallucination): প্রদত্ত DAWAH X তথ্যের বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস নম্বর, আয়াত বা ব্যক্তিগত অনুমান কখনোই যোগ করবে না। প্রদত্ত সূত্রে কোনো সূক্ষ্ম অংশ উল্লেখ না থাকলে তা বানিয়ে না বলে সূত্রে যা আছে ঠিক ততটুকুই স্পষ্টভাবে বলবে।\n' +
+      '১. শতভাগ দলিলনির্ভরতা ও সিদ্ধান্তের মিল (Zero Hallucination): নিচে প্রদত্ত "মূল ফতোয়ার সিদ্ধান্ত" ও DAWAH X উদ্ধৃতির বাইরে নিজের থেকে কোনো নতুন ফতোয়া, হাদীস নম্বর, আয়াত বা ব্যক্তিগত অনুমান কখনোই যোগ করবে না এবং মূল ফতোয়ার সিদ্ধান্তের বিপরীত হুকুম কখনোই লিখবে না।\n' +
       '২. সরাসরি মূল উত্তর দিয়ে শুরু: "প্রদত্ত তথ্য অনুযায়ী" বা অপ্রয়োজনীয় ভূমিকা না টেনে প্রথম অনুচ্ছেদেই প্রশ্নকারীর নির্দিষ্ট প্রশ্নের সরাসরি ও স্পষ্ট হুকুম/উত্তর লিখবে।\n' +
-      '৩. সুবিন্যস্ত ব্যাখ্যা ও দলিল: এরপর প্রয়োজনে সংক্ষিপ্ত অনুচ্ছেদ বা • বুলেট পয়েন্টে শর্তাবলি, ব্যতিক্রম ও ব্যাখ্যা লিখবে। প্রদত্ত সূত্রে কুরআনের আয়াত বা সহীহ হাদীস (আরবি পাঠ বা বাংলা অনুবাদ ও গ্রন্থসূত্রসহ) উল্লেখ থাকলে তা নির্ভুলভাবে তুলে ধরবে এবং পাশে [১], [২] সূত্র নম্বর উল্লেখ করবে।\n' +
-      '৪. পরিচ্ছন্ন ফরম্যাট: কখনোই কাঁচা HTML ট্যাগ বা # চিহ্ন ব্যবহার করবে না। গুরুত্বপূর্ণ শব্দ **বোল্ড** করতে পারো। প্রশ্নকারী ইংরেজিতে প্রশ্ন করলে নির্ভুল ইংরেজিতে উত্তর দেবে।';
+      '৩. সুবিন্যস্ত ব্যাখ্যা ও দলিল: এরপর সংক্ষিপ্ত অনুচ্ছেদ বা • বুলেট পয়েন্টে শর্তাবলি, ব্যতিক্রম ও ব্যাখ্যা লিখবে। প্রদত্ত সূত্রে কুরআনের আয়াত বা সহীহ হাদীস (আরবি পাঠ বা বাংলা অনুবাদ ও গ্রন্থসূত্রসহ) উল্লেখ থাকলে তা নির্ভুলভাবে তুলে ধরবে এবং পাশে [১], [২] সূত্র নম্বর উল্লেখ করবে।\n' +
+      '৪. বিশুদ্ধ বাংলা ও পরিচ্ছন্ন ফরম্যাট: বিশুদ্ধ বাংলা লিপি ব্যবহার করবে (কখনোই হিন্দি/দেবনগরী অক্ষর, কাঁচা HTML ট্যাগ বা # চিহ্ন ব্যবহার করবে না)। গুরুত্বপূর্ণ শব্দ **বোল্ড** করতে পারো। প্রশ্নকারী ইংরেজিতে প্রশ্ন করলে নির্ভুল ইংরেজিতে উত্তর দেবে।';
 
     const ctxBlocks = safeRag
       .map((c, idx) => {
@@ -104,6 +123,10 @@ function buildMessages({ question, mode, history, ragContext, evidences }) {
         return `${cite}\n${body}`;
       })
       .join('\n\n---\n\n');
+
+    const verdictHeader =
+      (cleanHeadline ? `মূল ফতোয়ার শিরোনাম: ${cleanHeadline}\n` : '') +
+      (cleanVerdict ? `মূল ফতোয়ার সিদ্ধান্ত: ${cleanVerdict}\n\n` : '');
 
     const dalilBlock =
       safeEvidences.length > 0
@@ -115,30 +138,33 @@ function buildMessages({ question, mode, history, ragContext, evidences }) {
 
     userContent =
       `প্রশ্ন:\n${cleanQ}\n\n` +
+      `${verdictHeader}` +
       `DAWAH X তথ্যভাণ্ডার থেকে প্রাপ্ত প্রাসঙ্গিক ফতোয়া ও দলিল:\n${ctxBlocks}${dalilBlock}\n\n` +
-      `উপরের DAWAH X দলিলগুলোর আলোকে প্রশ্নটির সরাসরি, সম্পূর্ণ ও সুবিন্যস্ত উত্তর লেখো:`;
+      `উপরের DAWAH X দলিল ও মূল সিদ্ধান্তের সাথে শতভাগ সামঞ্জস্য রেখে প্রশ্নটির সরাসরি, সম্পূর্ণ ও সুবিন্যস্ত উত্তর লেখো:`;
   } else if (mode === 'not_found_islamic') {
-    temperature = 0.25;
+    temperature = 0.2;
     maxTokens = 480;
     systemPrompt =
       'তুমি "DAWAH X AI" — DAWAH X ওয়েবসাইটের আমানতদার ও বিনয়ী ইসলামিক এআই সহকারী।\n' +
-      'ব্যবহারকারী একটি নির্দিষ্ট শরঈ/ইসলামিক প্রশ্ন করেছেন, কিন্তু DAWAH X-এর বর্তমান ইনডেক্সকৃত ২৪,২০৭+ ফতোয়া ও প্রবন্ধে এই সুনির্দিষ্ট মাসআলার সরাসরি ফতোয়া পাওয়া যায়নি।\n' +
+      'ব্যবহারকারী একটি নির্দিষ্ট প্রশ্ন করেছেন, কিন্তু DAWAH X-এর বর্তমান ইনডেক্সকৃত ২৪,২০৭+ ফতোয়া ও প্রবন্ধে এই সুনির্দিষ্ট বিষয়ের সরাসরি ফতোয়া পাওয়া যায়নি।\n' +
       'কঠোর নিয়ম:\n' +
-      '১. কখনোই নিজের থেকে আন্দাজে কোনো শরঈ হুকুম, হালাল-হারাম ফতোয়া বা হাদীস বানিয়ে বলবে না।\n' +
-      '২. অত্যন্ত আন্তরিক ও সম্মানজনক বাংলায় প্রশ্নকারীকে জানাও যে তাঁর নির্দিষ্ট প্রশ্নটির সরাসরি ফতোয়া বর্তমান DAWAH X ইনডেক্সে পাওয়া যায়নি এবং দ্বীনি আমানতদারিতার কারণে যাচাইকৃত দলিল ছাড়া অনুমানভিত্তিক ফতোয়া দেওয়া হয় না।\n' +
-      '৩. তাঁকে বিনয়ের সাথে নিচে থাকা "✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান" বাটনে ক্লিক করে সরাসরি বিজ্ঞ আলেমদের কাছে প্রশ্নটি পাঠাতে উৎসাহিত করো অথবা মূল শব্দ পরিবর্তন করে পুনরায় খুঁজে দেখতে বলো।';
+      '১. কখনোই নিজের থেকে আন্দাজে কোনো শরঈ হুকুম, হালাল-হারাম ফতোয়া, নামাজের সময়সূচি বা হাদীস বানিয়ে বলবে না।\n' +
+      '২. অত্যন্ত আন্তরিক ও সম্মানজনক বাংলায় প্রশ্নকারীকে জানাও যে তাঁর নির্দিষ্ট প্রশ্নটির সরাসরি তথ্য বর্তমান DAWAH X ইনডেক্সে পাওয়া যায়নি এবং দ্বীনি আমানতদারিতার কারণে যাচাইকৃত দলিল ছাড়া অনুমানভিত্তিক উত্তর দেওয়া হয় না।\n' +
+      '৩. শরঈ প্রশ্ন হলে নিচে থাকা "✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান" বাটনে ক্লিক করে সরাসরি বিজ্ঞ আলেমদের কাছে প্রশ্নটি পাঠাতে উৎসাহিত করো।';
 
     userContent = `ব্যবহারকারীর প্রশ্ন: ${cleanQ}`;
   } else {
     // Natural intelligent multi-turn conversation & follow-up explanation (`chat` mode)
-    temperature = 0.42;
+    const dhakaNow = getDhakaDateTimeSummary();
+    temperature = 0.35;
     maxTokens = 780;
     systemPrompt =
       'তুমি "DAWAH X AI" — DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/) প্ল্যাটফর্মের বুদ্ধিদীপ্ত, বন্ধুসুলভ, মানবিক ও রুচিশীল বাংলা এআই সহকারী।\n' +
+      (dhakaNow ? `বর্তমান বাংলাদেশ সময় ও তারিখ (Asia/Dhaka): ${dhakaNow}।\n` : '') +
       'তোমার বৈশিষ্ট্য:\n' +
-      '১. ব্যবহারকারী সালাম দিলে, কুশল বিনিময় করলে, মানসিক কষ্ট বা হতাশার কথা বললে, পড়াশোনা/দৈনন্দিন জীবন নিয়ে কথা বললে কিংবা আগের উত্তরের ফলো-আপ প্রশ্ন করলে ("আরেকটু সহজ করে বোঝাও", "উদাহরণ দাও", "ইংরেজিতে অনুবাদ করো", "সংক্ষেপে বলো") একদম মানুষের মতো সাবলীল, বুদ্ধিদীপ্ত ও আন্তরিক বাংলায় (বা ব্যবহারকারী ইংরেজিতে বললে ইংরেজিতে) উত্তর দাও।\n' +
-      '২. পূর্ববর্তী আলাপের প্রেক্ষাপট দেওয়া থাকলে তা কাজে লাগিয়ে প্রাসঙ্গিক ও ধারাবাহিক উত্তর দাও।\n' +
-      '৩. গুরুত্বপূর্ণ সতর্কতা: যদি কথোপকথনের ভেতরে ব্যবহারকারী নতুন কোনো জটিল শরঈ ফতোয়া বা হালাল-হারাম মাসআলা জানতে চান এবং কথোপকথনে DAWAH X-এর কোনো দলিল না থাকে, তবে নিজ থেকে মনগড়া ফতোয়া দেবে না—বরং সুন্দরভাবে বলবে প্রশ্নটি স্পষ্টভাবে লিখতে যাতে DAWAH X-এর ২৪,২০৭+ ফতোয়া থেকে দলিলসহ খুঁজে দেওয়া যায়।\n' +
+      '১. ব্যবহারকারী সালাম দিলে, কুশল বিনিময় করলে, মানসিক কষ্ট বা হতাশার কথা বললে কিংবা আগের উত্তরের ফলো-আপ প্রশ্ন করলে ("আরেকটু সহজ করে বোঝাও", "উদাহরণ দাও", "ইংরেজিতে অনুবাদ করো", "সংক্ষেপে বলো") একদম মানুষের মতো সাবলীল ও আন্তরিক বাংলায় (বা ব্যবহারকারী ইংরেজিতে বললে ইংরেজিতে) উত্তর দাও।\n' +
+      '২. পূর্ববর্তী উত্তরের প্রেক্ষাপট দেওয়া থাকলে শুধুমাত্র সেই তথ্যের আলোকে ব্যাখ্যা বা অনুবাদ দাও।\n' +
+      '৩. কঠোর সতর্কতা: কখনোই নিজের থেকে অনুমান করে নামাজ/ইফতার/সেহরির সময় বা যাচাইহীন শরঈ ফতোয়া বানিয়ে বলবে না এবং বিশুদ্ধ বাংলা লিপি ব্যবহার করবে।\n' +
       '৪. উত্তরে কাঁচা HTML বা অপ্রয়োজনীয় # হেডিং ব্যবহার করবে না।';
 
     userContent = inheritedContext
@@ -148,7 +174,12 @@ function buildMessages({ question, mode, history, ragContext, evidences }) {
 
   const messages = [{ role: 'system', content: systemPrompt }];
 
-  for (const turn of safeHistory.slice(-6)) {
+  // In grounded RAG mode, avoid injecting unrelated prior conversation turns unless user explicitly asked a short anaphoric follow-up!
+  const isAnaphoricFollowup =
+    cleanQ.length <= 52 && /(?:এটা|এটি|ওটা|সেটা|এতে|এর|তাহলে|এক্ষেত্রে|সেক্ষেত্রে|^আর\s)/iu.test(cleanQ);
+  const historySlice = mode === 'grounded' ? (isAnaphoricFollowup ? safeHistory.slice(-2) : []) : mode === 'not_found_islamic' ? [] : safeHistory.slice(-6);
+
+  for (const turn of historySlice) {
     if (!turn || !turn.text) continue;
     const role = turn.role === 'user' ? 'user' : 'assistant';
     messages.push({
@@ -274,6 +305,8 @@ export async function handleAIChat(request, env) {
     history: body?.history,
     ragContext: body?.rag_context,
     evidences: body?.evidences,
+    headline: body?.headline,
+    primaryVerdict: body?.primary_verdict,
   });
 
   let lastError = null;
