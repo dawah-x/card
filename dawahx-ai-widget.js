@@ -546,8 +546,8 @@
       }
       msgsBox.scrollTop = msgsBox.scrollHeight;
 
-      // Live Cloudflare Workers AI stream inside floating widget when connected
-      if (detectedWorkerBase) {
+      // Live Cloudflare Workers AI stream inside floating widget when connected (never overwrite deterministic tools!)
+      if (detectedWorkerBase && !resData.is_deterministic_tool) {
         const streamSlot = a.querySelector('.w-stream');
         const hasRag = Array.isArray(resData.rag_context) && resData.rag_context.length > 0;
         const mode =
@@ -564,6 +564,8 @@
               question: q,
               mode,
               stream: true,
+              headline: resData.headline || '',
+              primary_verdict: hasRag ? resData.direct_answer || '' : '',
               history: widgetHistory.slice(0, -2).slice(-6),
               rag_context: hasRag ? resData.rag_context.slice(0, 4) : [],
               evidences: Array.isArray(resData.evidences) ? resData.evidences.slice(0, 3) : [],

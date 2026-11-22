@@ -12,7 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=10.0" />
+  <link rel="stylesheet" href="styles.css?v=11.0" />
 </head>
 <body>
   <div class="app-shell">
@@ -384,21 +384,28 @@ Content-Type: application/json
     </div>
   </div>
 
-  <!-- 24-District Live Prayer, Sehri, Iftar & Hijri Calendar Modal -->
+  <!-- 64-District Live Prayer, Sehri, Iftar & Hijri Calendar Modal -->
   <div class="modal-dialog" id="prayerModal" role="dialog" aria-modal="true">
     <div class="drawer-header">
-      <strong style="color: var(--gold-bright);">🕌 নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার</strong>
+      <strong style="color: var(--gold-bright);">🕌 বাংলাদেশের ৬৪ জেলার নামাজ, সেহরি, ইফতার ও হিজরি ক্যালেন্ডার</strong>
       <button class="src-action-btn" data-close-modal="1">✕ বন্ধ করুন</button>
     </div>
     <div class="modal-body">
-      <div class="prayer-modal-top">
+      <div class="prayer-modal-top" style="gap: 10px; flex-wrap: wrap;">
         <div>
-          <label for="prayerCitySelect" style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;">আপনার জেলা নির্বাচন করুন:</label>
-          <select id="prayerCitySelect" class="input-field" style="min-width:190px;"></select>
+          <label for="prayerCitySelect" style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;">আপনার জেলা নির্বাচন করুন (৬৪ জেলা):</label>
+          <select id="prayerCitySelect" class="input-field" style="min-width:175px;"></select>
+        </div>
+        <div>
+          <label for="prayerAsrSelect" style="font-size:12.5px;color:var(--muted);display:block;margin-bottom:4px;">আসর গণনা পদ্ধতি:</label>
+          <select id="prayerAsrSelect" class="input-field" style="min-width:210px;">
+            <option value="hanafi">হানাফী / ইসলামিক ফাউন্ডেশন (২ ছায়া)</option>
+            <option value="shafi">আহলে হাদীস / শাফেঈ (১ ছায়া)</option>
+          </select>
         </div>
         <div class="hijri-badge-box">
-          <small style="color:var(--muted);">আজকের আনুমানিক হিজরি তারিখ</small>
-          <strong id="prayerHijriLabel" style="color:var(--gold-bright);font-size:15.5px;">লোড হচ্ছে...</strong>
+          <small style="color:var(--muted);">আজকের তারিখ ও আনুমানিক হিজরি</small>
+          <strong id="prayerHijriLabel" style="color:var(--gold-bright);font-size:14.5px;">লোড হচ্ছে...</strong>
         </div>
       </div>
       <div class="prayer-countdown-banner" id="prayerCountdownBanner"></div>
@@ -565,7 +572,7 @@ Content-Type: application/json
   <!-- Toast Notification Pill -->
   <div class="app-toast" id="appToast" role="status" aria-live="polite"></div>
 
-  <script src="browser-ai.js?v=10.0"></script>
-  <script src="app.js?v=10.0"></script>
+  <script src="browser-ai.js?v=11.0"></script>
+  <script src="app.js?v=11.0"></script>
 </body>
 </html>

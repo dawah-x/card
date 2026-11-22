@@ -722,7 +722,8 @@
   }
 
   async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
-    if (!targetEl) return;
+    // Never overwrite deterministic built-in tools (Prayer Times, Hijri Date, Clock, Zakat Math, Masnoon Duas, Quizzes, Recent Articles)!
+    if (!targetEl || data.is_deterministic_tool) return;
 
     const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
     const isBubble = Boolean(data.is_chat || data.status === 'conversational' || data.status === 'not_found');
@@ -767,6 +768,8 @@
             question,
             mode,
             stream: true,
+            headline: data.headline || '',
+            primary_verdict: hasRag ? data.direct_answer || '' : '',
             history: (historySnapshot || chatHistory.slice(0, -2)).slice(-8),
             rag_context: hasRag ? data.rag_context.slice(0, 5) : [],
             evidences: Array.isArray(data.evidences) ? data.evidences.slice(0, 4) : [],
@@ -1230,17 +1233,6 @@
     chatScroll.scrollTop = chatScroll.scrollHeight;
 
     const historySnapshot = chatHistory.slice(-10);
-    const followPrefixRe = /^(?:আর\b|তাহলে\b|এক্ষেত্রে\b|সেক্ষেত্রে\b|যদি\b|কিন্তু\b|এর\b|এটার\b|ওটার\b)/u;
-    const pureElabRe = /^(?:আরেকটু\s*(?:বিস্তারিত|সহজ\s*করে|খুলে)|উদাহরণ\s*দাও|সংক্ষেপে\s*বলো|ইংরেজিতে\s*(?:বলো|অনুবাদ\s*করো)|explain\s*more|in\s*english)/iu;
-    let retrievalQ = question;
-    if (historySnapshot.length && !pureElabRe.test(question.trim()) && (question.trim().split(/\s+/).length <= 5 || followPrefixRe.test(question.trim()))) {
-      for (let i = historySnapshot.length - 1; i >= 0; i--) {
-        if (historySnapshot[i].role === 'user' && historySnapshot[i].text) {
-          retrievalQ = `${historySnapshot[i].text} ${question}`;
-          break;
-        }
-      }
-    }
 
     try {
       let data = null;
@@ -1250,7 +1242,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              question: retrievalQ,
+              question,
               source_filter: activeFilter,
               top_k: 5,
               history: historySnapshot,
@@ -1260,7 +1252,7 @@
         } catch (_) {}
       }
       if (!data && window.DawahXBrowserAI) {
-        data = await window.DawahXBrowserAI.ask(retrievalQ, activeFilter, 5, historySnapshot);
+        data = await window.DawahXBrowserAI.ask(question, activeFilter, 5, historySnapshot);
       }
       if (!data) throw new Error('No AI response');
 
@@ -1571,8 +1563,12 @@
     voiceBtn.style.display = 'none';
   }
 
-  // ===== v4.0 24-District Prayer & Hijri Modal =====
+  // ===== 64-District Prayer, Sehri, Iftar & Hijri Modal =====
   const prayerCitySelect = document.getElementById('prayerCitySelect');
+  const prayerAsrSelect = document.getElementById('prayerAsrSelect');
+  const ASR_METHOD_KEY = 'dawahx_asr_method';
+  let selectedAsrMethod = localStorage.getItem(ASR_METHOD_KEY) || 'hanafi';
+
   function renderPrayerModalBody() {
     if (!window.DawahXBrowserAI || !prayerModal) return;
     if (prayerCitySelect && !prayerCitySelect.options.length && Array.isArray(window.DawahXBrowserAI.cities)) {
@@ -1581,11 +1577,12 @@
         .join('');
     }
     if (prayerCitySelect) prayerCitySelect.value = selectedCityId;
+    if (prayerAsrSelect) prayerAsrSelect.value = selectedAsrMethod;
 
-    const sched = window.DawahXBrowserAI.getPrayerTimes(selectedCityId);
+    const sched = window.DawahXBrowserAI.getPrayerTimes(selectedCityId, new Date(), selectedAsrMethod);
     const hj = window.DawahXBrowserAI.getHijriDate ? window.DawahXBrowserAI.getHijriDate() : { label: '' };
     const hjEl = document.getElementById('prayerHijriLabel');
-    if (hjEl) hjEl.textContent = hj.label;
+    if (hjEl) hjEl.textContent = `${sched.date_label_bn || ''} · ${hj.label}`;
 
     const bannerEl = document.getElementById('prayerCountdownBanner');
     if (bannerEl) {
@@ -1596,14 +1593,15 @@
     }
 
     const tm = sched.times;
+    const isShafi = selectedAsrMethod === 'shafi';
     const rows = [
-      ['সেহরির শেষ সময়', tm.sehriEnd.label, false],
-      ['ফজর শুরু', tm.fajr.label, sched.next_waqt_name === 'ফজর'],
+      ['সেহরির শেষ সময় (সতর্কতামূলক)', tm.sehriEnd.label, false],
+      ['ফজর শুরু', tm.fajr.label, sched.next_waqt_name === 'ফজর' || sched.next_waqt_name === 'আগামীকাল ফজর'],
       ['সূর্যোদয়', tm.sunrise.label, sched.next_waqt_name === 'সূর্যোদয়'],
       ['যোহর', tm.dhuhr.label, sched.next_waqt_name === 'যোহর'],
-      ['আসর (শাফেঈ / আহলে হাদীস)', tm.asr.label, sched.next_waqt_name === 'আসর'],
-      ['আসর (হানাফী)', tm.asrHanafi.label, false],
-      ['মাগরিব / ইফতার', tm.maghrib.label, sched.next_waqt_name === 'মাগরিব / ইফতার'],
+      ['আসর (শাফেঈ / আহলে হাদীস — ১ ছায়া)', tm.asr.label, isShafi && sched.next_waqt_name === 'আসর'],
+      ['আসর (হানাফী / ই.ফা. — ২ ছায়া)', tm.asrHanafi.label, !isShafi && sched.next_waqt_name === 'আসর'],
+      ['মাগরিব / ইফতার (সূর্যাস্ত)', `${tm.maghrib.label}${tm.iftarIfb ? ` (ই.ফা.: ${tm.iftarIfb.short})` : ''}`, sched.next_waqt_name === 'মাগরিব / ইফতার'],
       ['এশা', tm.isha.label, sched.next_waqt_name === 'এশা'],
     ];
     const gridEl = document.getElementById('prayerGridTable');
@@ -1633,6 +1631,12 @@
   prayerCitySelect?.addEventListener('change', () => {
     selectedCityId = prayerCitySelect.value || 'dhaka';
     localStorage.setItem(CITY_KEY, selectedCityId);
+    updateLivePrayerBadge();
+    renderPrayerModalBody();
+  });
+  prayerAsrSelect?.addEventListener('change', () => {
+    selectedAsrMethod = prayerAsrSelect.value || 'hanafi';
+    localStorage.setItem(ASR_METHOD_KEY, selectedAsrMethod);
     updateLivePrayerBadge();
     renderPrayerModalBody();
   });
