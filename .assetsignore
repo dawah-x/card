@@ -1,0 +1,16 @@
+.git
+.github
+.venv
+.cache
+.wrangler
+cloudflare
+dawahx_ai
+functions
+tests
+dist
+node_modules
+*.py
+package.json
+requirements.txt
+wrangler.toml
+README.md

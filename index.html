@@ -12,7 +12,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=7.0" />
+  <link rel="stylesheet" href="styles.css?v=10.0" />
 </head>
 <body>
   <div class="app-shell">
@@ -154,7 +154,7 @@
           <button type="button" class="mobile-menu-btn" id="mobileMenuBtn" aria-label="মেনু খুলুন">☰</button>
           <button type="button" class="desktop-sidebar-btn" id="desktopSidebarToggleBtn" title="সাইডবার লুকান / দেখান (Ctrl+B)" aria-label="সাইডবার টগল করুন">◧</button>
           <div class="model-badge-bar">
-            <strong>DAWAH X <span class="ai-pill">AI</span></strong>
+            <strong>DAWAH X <span class="ai-pill" id="headerAiPill">AI</span></strong>
             <span class="strict-tag">✓ স্মার্ট কথোপকথন · শতভাগ DAWAH-X দলিলনির্ভর</span>
           </div>
         </div>
@@ -338,8 +338,32 @@ Content-Type: application/json
 }</pre>
       </div>
 
+      <div class="cf-config-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+          <h3 style="font-size: 16px; color: var(--gold-bright); margin: 0;">৪. ☁️ Cloudflare Workers AI (ফ্রি লাইভ জেনারেটিভ এআই সার্ভার)</h3>
+          <span class="cf-status-pill" id="cfAiStatusBadge">⚪ যাচাই করা হচ্ছে...</span>
+        </div>
+        <p style="font-size: 13px; color: var(--muted); margin-bottom: 10px; line-height: 1.6;">
+          Cloudflare Workers AI যুক্ত থাকলে সাইটের সকল ভিজিটর কোনো API Key ছাড়াই <strong>Llama 3.3 70B</strong> মডেলের মাধ্যমে একদম স্বাভাবিক বাংলায় লাইভ স্ট্রিমিং কথোপকথন ও শতভাগ DAWAH X দলিলভিত্তিক সুবিন্যস্ত ব্যাখ্যা পাবেন। Cloudflare-এ সাইটটি সরাসরি ওপেন করলে এটি অটোমেটিক চালু থাকে; আর GitHub Pages থেকে ব্যবহার করতে আপনার Worker URL নিচে দিন:
+        </p>
+        <div class="cf-url-row">
+          <input type="url" id="cfWorkerUrlInput" class="input-field" placeholder="https://ead.ead123628.workers.dev" autocomplete="off" />
+          <button type="button" class="src-action-btn gold-link" id="saveCfWorkerBtn">⚡ সংযোগ পরীক্ষা ও সেভ</button>
+          <button type="button" class="src-action-btn" id="clearCfWorkerBtn">রিসেট</button>
+        </div>
+        <div id="cfSavedMsg" style="font-size: 12.5px; margin-top: 7px;"></div>
+        <details class="cf-setup-guide">
+          <summary>📘 ১ মিনিটে ফ্রি Cloudflare Workers AI চালুর নিয়ম দেখুন</summary>
+          <ol>
+            <li>আপনার <a href="https://dash.cloudflare.com/" target="_blank" rel="noopener noreferrer" style="color:var(--gold);">Cloudflare Dashboard ↗</a>-এ লগইন করে বাম মেনু থেকে <strong>Workers &amp; Pages → Create</strong>-এ যান।</li>
+            <li><strong>Import a repository</strong> সিলেক্ট করে GitHub থেকে আপনার <code>dawah-x/card</code> রিপোজিটরিটি যুক্ত করুন এবং <strong>Deploy</strong> চাপুন (এই রিপোজিটরিতে <code>wrangler.toml</code> ও <code>[ai]</code> বাইন্ডিং আগে থেকেই সম্পূর্ণ রেডি আছে)।</li>
+            <li>ডিপ্লয় শেষ হলে পাওয়া <code>https://dawahx-ai.&lt;subdomain&gt;.workers.dev</code> লিংকটি সরাসরি ব্যবহার করুন অথবা উপরের বক্সে পেস্ট করে সেভ করুন!</li>
+          </ol>
+        </details>
+      </div>
+
       <div>
-        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">৪. ঐচ্ছিক: জেনারেটিভ LLM ভাষা-সংস্করণ মোড (Browser RAG)</h3>
+        <h3 style="font-size: 16px; color: var(--gold); margin-bottom: 6px;">৫. ঐচ্ছিক: ব্যক্তিগত API Key মোড (Gemini / Groq / OpenAI)</h3>
         <p style="font-size: 13px; color: var(--muted); margin-bottom: 10px;">
           ডিফল্টভাবে আমাদের নিজস্ব ট্রেইনকৃত DAWAH X AI মডেল কোনো API Key ছাড়াই সরাসরি কাজ করে। আপনি চাইলে ঐচ্ছিকভাবে ফ্রি Gemini বা Groq/OpenAI API Key দিয়ে উদ্ধারকৃত DAWAH X দলিলগুলোকে আরও সাবলীল কথোপকথনের ভাষায় সাজিয়ে নিতে পারেন (তখনও বাইরের কোনো তথ্য যোগ করা হবে না):
         </p>
@@ -541,7 +565,7 @@ Content-Type: application/json
   <!-- Toast Notification Pill -->
   <div class="app-toast" id="appToast" role="status" aria-live="polite"></div>
 
-  <script src="browser-ai.js?v=7.0"></script>
-  <script src="app.js?v=7.0"></script>
+  <script src="browser-ai.js?v=10.0"></script>
+  <script src="app.js?v=10.0"></script>
 </body>
 </html>

@@ -22,12 +22,26 @@
 
 ---
 
-## কীভাবে চালাবেন (GitHub Pages ও Local)
+## কীভাবে চালাবেন (Cloudflare Workers AI, GitHub Pages ও Local)
 
-### ১. GitHub Pages-এ সরাসরি (কোনো সার্ভার ছাড়াই)
+### ১. ☁️ Cloudflare Workers AI-এ ফ্রি জেনারেটিভ এআই ডিপ্লয় (সবচেয়ে শক্তিশালী মোড)
+এই রিপোজিটরিতে `wrangler.toml`, `cloudflare/worker.js` ও `cloudflare/ai-handler.js` আগে থেকেই সম্পূর্ণ প্রস্তুত রয়েছে। এটি যুক্ত করলে ভিজিটররা কোনো API Key ছাড়াই **Llama 3.3 70B** মডেলের মাধ্যমে লাইভ স্ট্রিমিং কথোপকথন ও শতভাগ DAWAH X দলিলভিত্তিক সুবিন্যস্ত উত্তর পাবেন।
+
+**পদ্ধতি ক — Cloudflare Dashboard থেকে ১ ক্লিকে (সবচেয়ে সহজ, কোনো টোকেন লাগবে না):**
+1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → **Create**-এ যান।
+2. **Import a repository** নির্বাচন করে আপনার GitHub রিপোজিটরি `dawah-x/card` যুক্ত করুন এবং **Deploy** চাপুন।
+3. ডিপ্লয় শেষ হলে [`https://ead.ead123628.workers.dev/`](https://ead.ead123628.workers.dev/) এবং [`https://dawah-x.github.io/card/`](https://dawah-x.github.io/card/)—উভয় লিংকেই স্বয়ংক্রিয়ভাবে পূর্ণ সাইট ও লাইভ জেনারেটিভ এআই একসাথে কাজ করবে!
+
+**পদ্ধতি খ — GitHub Actions অটো-ডিপ্লয় (ঐচ্ছিক):**
+- আপনার GitHub রিপোজিটরির **Settings → Secrets and variables → Actions**-এ গিয়ে দুটি Secret যুক্ত করুন:
+  - `CLOUDFLARE_API_TOKEN` (Workers Scripts Edit + Workers AI Read পারমিশনসহ)
+  - `CLOUDFLARE_ACCOUNT_ID`
+- এরপর থেকে `main` ব্রাঞ্চে যেকোনো পরিবর্তন মার্জ হলেই `.github/workflows/deploy-cloudflare.yml` স্বয়ংক্রিয়ভাবে আপনার Cloudflare Worker আপডেট করে দেবে।
+
+### ২. GitHub Pages-এ সরাসরি (কোনো সার্ভার ছাড়াই)
 রিপোজিটরির রুটে থাকা `index.html`, `.nojekyll`, `styles.css`, `browser-ai.js` ও `app.js` সরাসরি **GitHub Pages** (`https://dawah-x.github.io/card/`)-এ চলে এবং ব্রাউজার থেকেই সরাসরি `https://ebrahim-ead.github.io/DAWAH-X/`-এর স্ট্যাটিক ইনডেক্স ও লেখা পড়ে উত্তর দেয়।
 
-### ২. লোকাল কম্পিউটারে বা Python সার্ভারে
+### ৩. লোকাল কম্পিউটারে বা Python সার্ভারে
 
 ```bash
 # স্ট্যাটিক মোডে চালাতে:

@@ -2704,10 +2704,14 @@
         if (followUps.length >= 5) break;
       }
 
-      const ragContext = citedDocs.slice(0, 3).map((c, i) => ({
-        citation: `[${i + 1}] ${c.title} (${c.source_name}) — ${c.dawahx_url}`,
-        content: trimCleanly(c.answer_body, 1200),
-      }));
+      const ragContext = citedDocs.slice(0, 4).map((c, i) => {
+        const bestChunk = selectBestParagraphs(c, coreSet, expSet, 7, 2400).join('\n\n') || trimCleanly(c.answer_body, 2200);
+        const qHeader = c.question_context ? `প্রশ্ন/প্রেক্ষাপট: ${trimCleanly(c.question_context, 420)}\n` : '';
+        return {
+          citation: `[${i + 1}] ${c.clean_title || c.title} (${c.source_name}) — ${c.dawahx_url}`,
+          content: `${qHeader}উত্তর/বিস্তারিত:\n${bestChunk}`,
+        };
+      });
 
       const conversationalIntro = buildConversationalOpening(
         question,

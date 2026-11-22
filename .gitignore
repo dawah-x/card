@@ -11,6 +11,11 @@ __pycache__/
 # Cloned DAWAH-X corpus & trained binary model cache (auto-generated on startup / train)
 .cache/
 
+# Cloudflare Wrangler & generated static asset bundle
+.wrangler/
+dist/
+node_modules/
+
 # OS / Editor
 .DS_Store
 *.log
