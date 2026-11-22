@@ -373,11 +373,26 @@
       }
       .panel {
         position: fixed; right: 20px; bottom: 78px; z-index: 99999;
-        width: min(410px, calc(100vw - 28px)); height: min(580px, calc(100vh - 110px));
+        width: min(410px, calc(100vw - 28px));
+        height: min(580px, calc(100vh - 110px));
+        height: min(580px, calc(100dvh - 110px));
         background: #06121b; color: #eef2f8;
         border: 1px solid #1f4363; border-radius: 16px;
         box-shadow: 0 20px 50px rgba(0,0,0,0.65);
         display: none; flex-direction: column; overflow: hidden;
+      }
+      @media (max-width: 600px) {
+        .fab { right: 14px; bottom: calc(14px + env(safe-area-inset-bottom, 0px)); padding: 11px 16px; font-size: 14px; }
+        .panel {
+          right: 0; left: 0; bottom: 0;
+          width: 100vw;
+          height: min(86vh, 640px);
+          height: min(86dvh, 640px);
+          border-radius: 18px 18px 0 0;
+          border-left: 0; border-right: 0; border-bottom: 0;
+        }
+        .inp-bar { padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); }
+        .inp-bar input { font-size: 16px !important; }
       }
       .panel.open { display: flex; }
       .hdr {

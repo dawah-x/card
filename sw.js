@@ -1,7 +1,7 @@
 /* DAWAH X AI — Progressive Web App Service Worker (Network-first with instant offline cache fallback) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v5';
+const CACHE_NAME = 'dawahx-ai-v6';
 const SHELL_ASSETS = [
   './',
   'index.html',
