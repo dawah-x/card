@@ -83,31 +83,54 @@
       .trim();
   }
 
-  // Repairs spaced vowel marks, strips leaked continuation preambles & removes sentence-level repetition loops
-  function cleanAndDeduplicateAnswer(rawText) {
-    let text = String(rawText || '');
-    if (!text) return { text: '', hadLoop: false };
-
-    // 1. Repair any spaced Bengali combining vowel/virama/nukta marks (e.g., "ঠ ি ক" -> "ঠিক")
+  function repairSpacedBengaliMarks(input) {
+    let text = String(input || '');
     let prev = '';
     while (text !== prev) {
       prev = text;
       text = text.replace(
-        /([\u0985-\u09B9\u09CE\u09DC-\u09DF\u09BE-\u09CD])\s+([\u0981-\u0983\u09BC\u09BE-\u09CD\u09D7])/gu,
+        /([\u0980-\u09FF])[ \t]+([\u0981-\u0983\u09BC\u09BE-\u09CD\u09D7])/gu,
         '$1$2'
       );
     }
+    return text;
+  }
 
-    // 2. Strip any echoed continuation meta-instruction
-    text = text
+  function detectClientDegeneracyIndex(text) {
+    const s = String(text || '');
+    const checks = [
+      /[\u0900-\u0963\u0966-\u097F]/u, // Devanagari (Hindi) drift (excludes shared U+0964 । & U+0965 ॥)
+      /[\u0679\u067E\u0686\u0688\u0691\u06AF\u06BA\u06D2]/u, // Urdu-only letters
+      /[0-9]{10,}/, // 10+ consecutive ASCII digit soup
+      /ايضاً\s*اقرا/u, // Echoed raw cross-link header
+    ];
+    let earliest = -1;
+    for (const re of checks) {
+      const m = re.exec(s);
+      if (m && (earliest === -1 || m.index < earliest)) earliest = m.index;
+    }
+    return earliest;
+  }
+
+  // Repairs spaced vowel marks, strips script drift/digit soup & removes sentence-level repetition loops
+  function cleanAndDeduplicateAnswer(rawText) {
+    let text = repairSpacedBengaliMarks(rawText)
       .replace(/ঠিক\s*যেখান\s*থেকে\s*থেমেছে[^।\n:]*[:।]?\s*/gu, '')
       .trim();
+    if (!text) return { text: '', hadLoop: false };
 
-    // 3. Sentence-level loop deduplication
+    let hadLoop = false;
+    const degenIdx = detectClientDegeneracyIndex(text);
+    if (degenIdx !== -1) {
+      text = text.slice(0, degenIdx).trim();
+      hadLoop = true;
+    }
+    if (!text) return { text: '', hadLoop };
+
+    // Sentence-level loop deduplication
     const segments = text.match(/[^।?!\n]+[।?!]*|\n+/gu) || [text];
     const seen = [];
     const kept = [];
-    let hadLoop = false;
 
     for (const seg of segments) {
       if (/^\n+$/.test(seg)) {
@@ -131,7 +154,7 @@
     let out = kept.join('').trim();
     if (hadLoop) {
       const lastTerm = Math.max(out.lastIndexOf('।'), out.lastIndexOf('?'), out.lastIndexOf('!'));
-      if (lastTerm >= 40) out = out.slice(0, lastTerm + 1).trim();
+      if (lastTerm >= 30) out = out.slice(0, lastTerm + 1).trim();
     }
     return { text: out, hadLoop };
   }
@@ -157,7 +180,11 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v17_only';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v18_only';
+  try {
+    localStorage.removeItem('dawahx_ai_cache_v17_only');
+    localStorage.removeItem('dawahx_ai_cache_v16_only');
+  } catch (_) {}
   const CITY_KEY = 'dawahx_user_city_v4';
   const ASR_METHOD_KEY = 'dawahx_asr_method';
   const THEME_KEY = 'dawahx_theme_v4';
@@ -952,12 +979,16 @@
         rafScheduled = false;
         if (!streamBody) return;
         if (!fullText && !doneNow) return;
+        const displayTxt = repairSpacedBengaliMarks(fullText).trim();
         streamBody.innerHTML =
-          formatRichText(fullText.trim()) + (doneNow ? '' : '<span class="stream-cursor"></span>');
+          formatRichText(displayTxt) + (doneNow ? '' : '<span class="stream-cursor"></span>');
       };
 
       const onChunk = (incomingTok) => {
-        if (incomingTok && /[।?!\n]/.test(incomingTok) && fullText.length >= 140) {
+        const hasDegeneracy =
+          incomingTok &&
+          (detectClientDegeneracyIndex(incomingTok) !== -1 || detectClientDegeneracyIndex(fullText) !== -1);
+        if (hasDegeneracy || (incomingTok && /[।?!\n]/.test(incomingTok) && fullText.length >= 100)) {
           const check = cleanAndDeduplicateAnswer(fullText);
           if (check.hadLoop) {
             fullText = check.text;
@@ -1161,7 +1192,8 @@
       : '';
 
     if (data.ai_generated) {
-      data.ai_generated = trimToLastCompleteSentence(cleanAndDeduplicateAnswer(data.ai_generated).text);
+      const cleanedSaved = trimToLastCompleteSentence(cleanAndDeduplicateAnswer(data.ai_generated).text);
+      data.ai_generated = cleanedSaved.length >= 60 ? cleanedSaved : '';
     }
 
     const rawExplanationHtml = (data.explanation_paragraphs || [])
