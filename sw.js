@@ -1,7 +1,7 @@
-/* DAWAH X AI — Progressive Web App Service Worker (v18.0 — Pure Bengali Decoding + Degeneracy Guard) */
+/* DAWAH X AI — Progressive Web App Service Worker (v19.0 — DAWAH X + Quran.com + HadithBD) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v18';
+const CACHE_NAME = 'dawahx-ai-v19';
 const SHELL_ASSETS = [
   './',
   'index.html',
