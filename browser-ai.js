@@ -110,8 +110,54 @@
     [/(?<=\s|^)[3৩](?=\s*তালাক)/gu, 'তিন'],
   ];
 
+  const BANGLISH_CLIENT_MAP = [
+    [/\bayatul\s*kursi\b/gi, 'আয়াতুল কুরসী'],
+    [/\bsahu\s*sijda[h]?\b|\bsijda(?:ye)?\s*sahu\b/gi, 'সাহু সিজদা'],
+    [/\bforoj\s*gosol(?:er)?\b|\bfarz\s*ghusl\b|\bgosol(?:er)?\b/gi, 'ফরয গোসল'],
+    [/\boju\s*vangar\b|\bozu\s*bhangar\b|\bwudu\b|\boju\b|\bozu\b/gi, 'ওযু ভঙ্গ'],
+    [/\btayammum\b/gi, 'তায়াম্মুম'],
+    [/\bnamaj(?:e|er)?\b|\bnamaz(?:e|er)?\b|\bsalat(?:e|er)?\b/gi, 'সালাত নামাজ'],
+    [/\bhat\b/gi, 'হাত'],
+    [/\bbuk(?:er)?\b/gi, 'বুকের'],
+    [/\bnavi(?:r)?\b|\bnabhi(?:r)?\b/gi, 'নাভির'],
+    [/\bbadh(?:bo|be|a)?\b/gi, 'বাঁধা'],
+    [/\broja(?:r)?\b|\broza(?:r)?\b|\bsiam\b|\bsiyam\b/gi, 'রোজা সিয়াম'],
+    [/\bvangar\b|\bbhangar\b|\bvange\b/gi, 'ভাঙ্গার ভঙ্গ'],
+    [/\bzakat(?:er)?\b|\bjakat(?:er)?\b/gi, 'যাকাত'],
+    [/\bfitra[h]?\b/gi, 'ফিতরা'],
+    [/\bqurbani\b|\bkurbani\b/gi, 'কুরবানী'],
+    [/\bakika[h]?\b|\baqiqa[h]?\b/gi, 'আকীকা'],
+    [/\bjanaja(?:r)?\b|\bjanaza(?:r)?\b/gi, 'জানাযা'],
+    [/\btahajjud(?:er)?\b/gi, 'তাহাজ্জুদ'],
+    [/\btarabi[h]?\b|\btaraweeh\b/gi, 'তারাবীহ'],
+    [/\bwitr\b|\bbitor(?:er)?\b|\bbitr\b/gi, 'বিতর'],
+    [/\bistikhara(?:r)?\b|\bistekhara(?:r)?\b/gi, 'ইস্তিখারা'],
+    [/\bdua\b|\bdoa\b/gi, 'দোয়া দুআ'],
+    [/\bghumanor\b/gi, 'ঘুমানোর'],
+    [/\btalak\b|\btalaq\b/gi, 'তালাক'],
+    [/\bsud(?:er)?\b|\briba\b/gi, 'সুদ রিবা'],
+    [/\bbkash\b/gi, 'বিকাশ'],
+    [/\bnagad\b/gi, 'নগদ'],
+    [/\bcashback\b/gi, 'ক্যাশব্যাক'],
+    [/\bporda(?:r)?\b|\bhijab\b/gi, 'পর্দা হিজাব'],
+    [/\bdari\b|\bbeard\b/gi, 'দাড়ি'],
+    [/\btawba[h]?\b|\btauba[h]?\b/gi, 'তাওবা'],
+    [/\bshirk\b/gi, 'শিরক'],
+    [/\bbidat\b|\bbidah\b/gi, 'বিদআত'],
+    [/\bkoto\s*rakat\b/gi, 'কত রাকআত'],
+    [/\bniyom\b|\bpoddhoti\b/gi, 'নিয়ম পদ্ধতি'],
+    [/\bkaron\b/gi, 'কারণ'],
+    [/\bhalal\b/gi, 'হালাল জায়েয'],
+    [/\bharam\b/gi, 'হারাম নাজায়েয'],
+  ];
+
   function expandCompoundsBn(text) {
     let s = String(text || '');
+    if (/[a-zA-Z]/.test(s)) {
+      for (const [re, bn] of BANGLISH_CLIENT_MAP) {
+        s = s.replace(re, bn);
+      }
+    }
     for (const [re, rep] of COMPOUND_BN_REPLACEMENTS) {
       s = s.replace(re, rep);
     }
@@ -2687,7 +2733,7 @@
         query: question,
         headline: '',
         direct_answer:
-          'দুঃখিত, এই নির্দিষ্ট প্রশ্নটির সরাসরি উত্তর **DAWAH X** ওয়েবসাইটের বর্তমান সংগ্রহে খুঁজে পাওয়া যায়নি। ভুল বা যাচাইহীন তথ্য এড়াতে আমি শুধুমাত্র **DAWAH X** ওয়েবসাইটের যাচাইকৃত দলিল ও সংগ্রহ থেকেই উত্তর প্রদান করি—অন্য কোনো ওয়েবসাইট থেকে উত্তর দেওয়া হয় না।',
+          'দুঃখিত, এই নির্দিষ্ট প্রশ্নটির সরাসরি দলিল **DAWAH X**, **Quran.com** কিংবা **HadithBD (বাংলা হাদিস)**-এ এই মুহূর্তে খুঁজে পাওয়া যায়নি। অনুমাননির্ভর বা যাচাইহীন তথ্য এড়াতে শুধুমাত্র এই তিনটি যাচাইকৃত উৎস থেকেই উত্তর প্রদান করা হয়।',
         explanation_paragraphs: [
           'আপনি চাইলে প্রশ্নটি একটু ভিন্ন শব্দে লিখে পুনরায় খুঁজতে পারেন, অথবা নিচের বাটনে ক্লিক করে প্রশ্নটি সরাসরি **DAWAH X টিমে** পাঠাতে পারেন।',
         ],

@@ -1,7 +1,7 @@
-/* DAWAH X AI — Progressive Web App Service Worker (v19.0 — DAWAH X + Quran.com + HadithBD) */
+/* DAWAH X AI — Progressive Web App Service Worker (v20.0 — Full 114-Surah + Tafsir + Quran Audio + HadithBD) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v19';
+const CACHE_NAME = 'dawahx-ai-v20';
 const SHELL_ASSETS = [
   './',
   'index.html',

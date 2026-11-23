@@ -19,7 +19,7 @@
     safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     safe = safe.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s)।?!.,:;]|$)/g, '$1<em>$2</em>');
     safe = safe.replace(
-      /([\u0600-\u06FF][\u0600-\u06FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{3,})/g,
+      /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF][\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{2,})/g,
       '<span class="ar-inline">$1</span>'
     );
     safe = safe.replace(/(?<=[।?!:])\s+(\([০-৯ক-ঘ]+\)|[০-৯]+\.)\s+/g, '<br><strong>$1</strong> ');
@@ -177,11 +177,16 @@
   let currentSessionId = 'sess_' + Date.now();
   let currentSessionTurns = [];
   let activeTtsBtn = null;
+  let activeQuranAudio = null;
+  let activeQuranAudioBtn = null;
+  const extSourceRegistry = new Map();
+  let extSourceSeq = 0;
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v19_3src';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v20_3src';
   try {
+    localStorage.removeItem('dawahx_ai_cache_v19_3src');
     localStorage.removeItem('dawahx_ai_cache_v18_only');
     localStorage.removeItem('dawahx_ai_cache_v17_only');
     localStorage.removeItem('dawahx_ai_cache_v16_only');
@@ -271,7 +276,23 @@
     const cards = safeList
       .map((s, idx) => {
         const isQuran = String(s.source_site || '').toLowerCase().includes('quran');
-        const linkLabel = isQuran ? 'Quran.com-এ দেখুন ↗' : 'HadithBD-তে দেখুন ↗';
+        const linkLabel = isQuran ? 'Quran.com ↗' : 'HadithBD ↗';
+        const extId = 'ext_' + (++extSourceSeq);
+        extSourceRegistry.set(extId, s);
+
+        const hasFullReader = Boolean((s.full_text && s.full_text.length > 35) || s.excerpt);
+        const readHereBtn = hasFullReader
+          ? `<button type="button" class="src-action-btn" data-read-ext-id="${extId}">📄 এখানেই পড়ুন</button>`
+          : '';
+
+        const validAudio =
+          s.audio_url && /^https:\/\/verses\.quran\.(?:com|foundation)\//i.test(String(s.audio_url))
+            ? String(s.audio_url)
+            : '';
+        const audioBtn = validAudio
+          ? `<button type="button" class="src-action-btn" data-play-quran-audio="${escHtml(validAudio)}">🎧 তিলাওয়াত</button>`
+          : '';
+
         const excerptHtml = s.excerpt
           ? `<div class="src-submeta" style="margin-top:4px;opacity:0.9;">${escHtml(String(s.excerpt).slice(0, 175))}${String(s.excerpt).length > 175 ? '…' : ''}</div>`
           : '';
@@ -286,6 +307,8 @@
             </div>
             ${excerptHtml}
             <div class="src-btn-row">
+              ${readHereBtn}
+              ${audioBtn}
               <a href="${escHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
                 ${linkLabel}
               </a>
@@ -310,7 +333,58 @@
     }
   }
 
+  function stopQuranAudio() {
+    if (activeQuranAudio) {
+      try {
+        activeQuranAudio.pause();
+        activeQuranAudio.currentTime = 0;
+      } catch (_) {}
+      activeQuranAudio = null;
+    }
+    if (activeQuranAudioBtn) {
+      activeQuranAudioBtn.classList.remove('tts-active');
+      activeQuranAudioBtn.textContent = '🎧 তিলাওয়াত';
+      activeQuranAudioBtn = null;
+    }
+  }
+
+  function toggleQuranAudio(audioUrl, btnEl) {
+    if (!audioUrl) return;
+    if (activeQuranAudioBtn === btnEl) {
+      stopQuranAudio();
+      return;
+    }
+    stopSpeech();
+    stopQuranAudio();
+
+    const audio = new Audio(audioUrl);
+    activeQuranAudio = audio;
+    activeQuranAudioBtn = btnEl;
+    btnEl.classList.add('tts-active');
+    btnEl.textContent = '⏹ থামান';
+
+    let retriedFoundation = false;
+    audio.onended = () => stopQuranAudio();
+    audio.onerror = () => {
+      if (!retriedFoundation && audioUrl.includes('verses.quran.com/')) {
+        retriedFoundation = true;
+        audio.src = audioUrl.replace('verses.quran.com/', 'verses.quran.foundation/');
+        audio.play().catch(() => {
+          stopQuranAudio();
+          showToast('তিলাওয়াত লোড করা যায়নি');
+        });
+        return;
+      }
+      stopQuranAudio();
+      showToast('তিলাওয়াত লোড করা যায়নি');
+    };
+    audio.play().catch(() => {
+      stopQuranAudio();
+    });
+  }
+
   function stopSpeech() {
+    stopQuranAudio();
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
     }
@@ -681,6 +755,32 @@
       return;
     }
 
+    const readExtBtn = e.target.closest('[data-read-ext-id]');
+    if (readExtBtn) {
+      e.preventDefault();
+      openExternalSourceReader(readExtBtn.getAttribute('data-read-ext-id'));
+      return;
+    }
+
+    const quranAudioBtn = e.target.closest('[data-play-quran-audio]');
+    if (quranAudioBtn) {
+      e.preventDefault();
+      toggleQuranAudio(quranAudioBtn.getAttribute('data-play-quran-audio'), quranAudioBtn);
+      return;
+    }
+
+    const regenBtn = e.target.closest('[data-regenerate-card]');
+    if (regenBtn) {
+      e.preventDefault();
+      const parentCard = regenBtn.closest('.msg-ai-card, .msg-ai-chat');
+      if (parentCard && parentCard._regenCtx) {
+        const ctx = parentCard._regenCtx;
+        showToast('🔄 নতুনভাবে উত্তর তৈরি হচ্ছে...');
+        maybeEnhanceWithBrowserLLM(ctx.question, ctx.data, ctx.slot, parentCard, ctx.historySnapshot, true);
+      }
+      return;
+    }
+
     const copyBtn = e.target.closest('[data-copy-answer]');
     if (copyBtn) {
       const payload = copyBtn.getAttribute('data-copy-answer');
@@ -960,19 +1060,97 @@
     return { passText, hadStreamError, replacedByLoopGuard };
   }
 
-  async function maybeEnhanceWithBrowserLLM(question, data, targetEl, answerCard, historySnapshot) {
+  // Browser-direct CORS fallback to official api.quran.com when Worker is offline & DAWAH X has not_found
+  async function tryBrowserDirectQuranFallback(question, data, targetEl, answerCard, applyExternalMetaToCard) {
+    try {
+      const cleanQ = String(question || '')
+        .replace(/[?!।,.;:'"()[\]{}]+/g, ' ')
+        .replace(/(?:^|\s)(?:কীভাবে|কিভাবে|কী|কি|বলুন|জানতে চাই|অর্থ|ব্যাখ্যা|সম্পর্কে)(?=$|\s)/gu, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      if (!cleanQ || cleanQ.length < 2) return false;
+
+      const url = `https://api.quran.com/api/v4/search?q=${encodeURIComponent(cleanQ)}&language=bn&size=3`;
+      const res = await fetch(url, { headers: { Accept: 'application/json' } });
+      if (!res.ok) return false;
+      const json = await res.json();
+      const hits = Array.isArray(json?.search?.results) ? json.search.results : [];
+      if (!hits.length) return false;
+
+      const extList = [];
+      const summaryLines = [];
+      for (const h of hits.slice(0, 3)) {
+        const vKey = String(h.verse_key || '');
+        const [ch, ay] = vKey.split(':');
+        if (!ch || !ay) continue;
+        const ar = String(h.text || '').replace(/<[^>]+>/g, '').trim();
+        const bnRaw = h.translations?.[0]?.text || '';
+        const bn = String(bnRaw).replace(/<sup[^>]*>[\s\S]*?<\/sup>/gi, '').replace(/<[^>]+>/g, '').trim();
+        if (!bn && !ar) continue;
+        const audioUrl = `https://verses.quran.com/Alafasy/mp3/${ch.padStart(3, '0')}${ay.padStart(3, '0')}.mp3`;
+        const qUrl = `https://quran.com/${ch}/${ay}`;
+        const vKeyBn = toBnNum(vKey);
+        extList.push({
+          rank: extList.length + 1,
+          source_site: 'Quran.com',
+          source_name: 'Quran.com · আল-কুরআন',
+          title: `আল-কুরআন (${vKeyBn})`,
+          url: qUrl,
+          audio_url: audioUrl,
+          arabic: ar,
+          excerpt: bn.slice(0, 240),
+          full_text: `${ar}\n\nবাংলা অনুবাদ:\n${bn}`,
+        });
+        summaryLines.push(`• **সূরা ও আয়াত (${vKeyBn}):** ${ar ? ar + '\n' : ''}${bn}`);
+      }
+      if (!extList.length) return false;
+
+      applyExternalMetaToCard(extList, true);
+      const renderedText = `**Quran.com** থেকে প্রাসঙ্গিক কুরআনের আয়াত ও বাংলা অনুবাদ নিচে তুলে ধরা হলো:\n\n${summaryLines.join('\n\n')}`;
+      targetEl.innerHTML =
+        `<div class="ai-stream-box">` +
+        `<div class="ai-stream-head"><span>✓ আল-কুরআনের প্রাসঙ্গিক আয়াত</span><small>Quran.com যাচাইকৃত</small></div>` +
+        `<div class="ai-stream-body">${formatRichText(renderedText)}</div>` +
+        `</div>`;
+      applyGeneratedAnswerToCard(answerCard, data, renderedText);
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  async function maybeEnhanceWithBrowserLLM(
+    question,
+    data,
+    targetEl,
+    answerCard,
+    historySnapshot,
+    bypassCache = false
+  ) {
     if (!targetEl || data.is_deterministic_tool) return;
 
+    if (answerCard && !answerCard._origFallbackHtml) {
+      answerCard._origFallbackHtml = targetEl.innerHTML;
+    }
+    const fallbackHtml = (answerCard && answerCard._origFallbackHtml) || targetEl.innerHTML;
+    if (answerCard) {
+      answerCard._regenCtx = { question, data, slot: targetEl, historySnapshot };
+    }
+
     const hasRag = Array.isArray(data.rag_context) && data.rag_context.length > 0;
-    const isBubble = Boolean(data.is_chat || data.status === 'conversational' || data.status === 'not_found');
+    const isBubble = Boolean(
+      data.is_chat ||
+        data.status === 'conversational' ||
+        data.status === 'not_found' ||
+        data.status === 'grounded_external'
+    );
     const mode =
-      data.status === 'not_found'
+      data.status === 'not_found' || data.status === 'grounded_external'
         ? 'not_found_islamic'
         : hasRag && !data.is_chat
           ? 'grounded'
           : 'chat';
 
-    const fallbackHtml = targetEl.innerHTML;
     const extSlotEl = answerCard ? answerCard.querySelector('[data-ext-sources-slot]') : null;
     const notFoundActionEl = answerCard ? answerCard.querySelector('[data-notfound-action]') : null;
 
@@ -994,8 +1172,9 @@
       }
     };
 
-    // 1. Instant Client Cache Hit for grounded queries (DAWAH X + Quran.com + HadithBD)
+    // 1. Instant Client Cache Hit for grounded queries (unless regenerating)
     if (
+      !bypassCache &&
       (mode === 'grounded' || mode === 'not_found_islamic') &&
       !(historySnapshot && historySnapshot.length && question.length <= 50)
     ) {
@@ -1021,7 +1200,12 @@
       }
     }
 
-    if (!cfAiAvailable) return;
+    if (!cfAiAvailable) {
+      if (mode === 'not_found_islamic') {
+        await tryBrowserDirectQuranFallback(question, data, targetEl, answerCard, applyExternalMetaToCard);
+      }
+      return;
+    }
 
     abortActiveStream();
     const abortCtrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
@@ -1127,6 +1311,7 @@
         question,
         mode,
         stream: true,
+        bypass_cache: Boolean(bypassCache),
         headline: data.headline || '',
         primary_verdict: hasRag ? data.direct_answer || '' : '',
         history: (historySnapshot || chatHistory.slice(0, -2)).slice(-6),
@@ -1285,6 +1470,16 @@
           }
           return;
         }
+      }
+      if (mode === 'not_found_islamic') {
+        const recovered = await tryBrowserDirectQuranFallback(
+          question,
+          data,
+          targetEl,
+          answerCard,
+          applyExternalMetaToCard
+        );
+        if (recovered) return;
       }
       targetEl.innerHTML = fallbackHtml;
     } finally {
@@ -1454,6 +1649,7 @@
           ${quickHtml}
           <div class="chat-bubble-tools">
             <button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-speak-text="${escHtml(ttsChatPayload)}">🔊 শুনুন</button>
+            <button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-regenerate-card="1">🔄 পুনরায়</button>
           </div>
         </div>
       `;
@@ -1533,6 +1729,7 @@
         <button type="button" class="mini-btn" data-speak-text="${escHtml(ttsFullText)}">🔊 শুনুন</button>
         ${bookmarkBtnHtml}
         <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 কপি</button>
+        <button type="button" class="mini-btn" data-regenerate-card="1">🔄 পুনরায়</button>
         <button type="button" class="mini-btn" data-share-q="${escHtml(data.query || data.headline || '')}">🔗 শেয়ার</button>
       </div>
     `;
@@ -1623,11 +1820,67 @@
     }
   }
 
+  // Inline Slide-Over Reader for Quran.com & HadithBD Verified Sources
+  function openExternalSourceReader(extId) {
+    const item = extSourceRegistry.get(extId);
+    if (!item || !readerDrawer) return;
+    stopSpeech();
+    readerDrawer.classList.add('open');
+    backdrop?.classList.add('open');
+
+    const brandLbl = readerDrawer.querySelector('.drawer-brand-lbl');
+    if (brandLbl) {
+      brandLbl.textContent =
+        String(item.source_site || '').toLowerCase().includes('quran')
+          ? 'Quran.com — মূল আয়াত ও তাফসীর'
+          : 'HadithBD — মূল হাদীস ও দলিল';
+    }
+
+    const titleEl = document.getElementById('drawerTitle');
+    const metaEl = document.getElementById('drawerMeta');
+    const contentEl = document.getElementById('drawerContent');
+    const extUrlEl = document.getElementById('drawerExternalUrl');
+    const rSearchInput = document.getElementById('readerSearchInput');
+    const rMatchBadge = document.getElementById('readerMatchBadge');
+    const rReadTime = document.getElementById('readerReadTimeBadge');
+
+    if (rSearchInput) rSearchInput.value = '';
+    if (rMatchBadge) rMatchBadge.style.display = 'none';
+
+    activeReaderDoc = {
+      title: item.title || item.source_name,
+      source_name: item.source_name || item.source_site,
+      dawahx_url: item.url,
+      share_url: item.url,
+    };
+
+    if (titleEl) titleEl.textContent = item.title || item.source_name;
+    if (metaEl) metaEl.textContent = item.source_name || item.source_site || '';
+    if (extUrlEl) extUrlEl.href = item.url || '#';
+
+    const audioBanner =
+      item.audio_url && /^https:\/\/verses\.quran\.(?:com|foundation)\//i.test(String(item.audio_url))
+        ? `<div style="margin-bottom:14px;"><button type="button" class="src-action-btn gold-link" data-play-quran-audio="${escHtml(item.audio_url)}">🎧 কুরআন তিলাওয়াত শুনুন (Mishary Alafasy)</button></div>`
+        : '';
+
+    const rawBody = String(item.full_text || item.excerpt || '').trim();
+    const formattedHtml = `${audioBanner}<div style="line-height:1.9;">${formatRichText(rawBody)}</div>`;
+    activeReaderBaseHtml = formattedHtml;
+    if (contentEl) contentEl.innerHTML = formattedHtml;
+
+    const wordCount = rawBody.split(/\s+/).filter(Boolean).length;
+    const mins = Math.max(1, Math.round(wordCount / 160));
+    if (rReadTime) rReadTime.textContent = `⏱ ~${toBnNum(mins)} মিনিট পাঠ`;
+  }
+
   // Inline Full-Article Reader Drawer
   async function openInlineReader(key) {
     if (!key || !readerDrawer) return;
+    stopSpeech();
     readerDrawer.classList.add('open');
     backdrop?.classList.add('open');
+    const brandLbl = readerDrawer.querySelector('.drawer-brand-lbl');
+    if (brandLbl) brandLbl.textContent = 'DAWAH X — মূল লেখা';
     const titleEl = document.getElementById('drawerTitle');
     const metaEl = document.getElementById('drawerMeta');
     const contentEl = document.getElementById('drawerContent');
