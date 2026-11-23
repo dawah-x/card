@@ -592,10 +592,13 @@
               if (!p || p === '[DONE]') return;
               try {
                 const j = JSON.parse(p);
+                if (Array.isArray(j.external_sources) && j.external_sources.length > 0) {
+                  onTok(null, null, j.external_sources);
+                }
                 if (typeof j.replace_text === 'string') {
-                  onTok(null, j.replace_text);
+                  onTok(null, j.replace_text, null);
                 } else if (j.token) {
-                  onTok(j.token, null);
+                  onTok(j.token, null, null);
                 }
               } catch (_) {}
             };
@@ -616,7 +619,27 @@
           if (streamSlot) {
             let out = '';
             let loopCut = false;
-            await runWidgetStreamPass(basePayload, (tok, rep) => {
+            const renderExtPills = (extList) => {
+              const valid = (extList || []).filter((x) =>
+                /^https:\/\/(?:www\.)?(?:quran\.com|hadithbd\.com)\//i.test(String(x?.url || ''))
+              );
+              if (!valid.length || a.querySelector('[data-dx-ext-links]')) return;
+              const box = document.createElement('div');
+              box.setAttribute('data-dx-ext-links', '1');
+              box.style.cssText = 'margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;';
+              box.innerHTML = valid
+                .slice(0, 3)
+                .map(
+                  (x) =>
+                    `<a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer" class="dx-src">📚 ${esc(
+                      (x.title || x.source_site || '').slice(0, 38)
+                    )} ↗</a>`
+                )
+                .join('');
+              a.appendChild(box);
+            };
+            await runWidgetStreamPass(basePayload, (tok, rep, extSrcs) => {
+              if (extSrcs) renderExtPills(extSrcs);
               if (rep !== null) {
                 out = rep;
                 loopCut = true;

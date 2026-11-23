@@ -180,8 +180,9 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v18_only';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v19_3src';
   try {
+    localStorage.removeItem('dawahx_ai_cache_v18_only');
     localStorage.removeItem('dawahx_ai_cache_v17_only');
     localStorage.removeItem('dawahx_ai_cache_v16_only');
   } catch (_) {}
@@ -225,28 +226,79 @@
     } catch (_) {}
   }
 
-  // Client-side 7-day LRU cache strictly for DAWAH X grounded answers
+  // Client-side 7-day LRU cache for verified grounded answers (DAWAH X + Quran.com + HadithBD)
   function makeLocalCacheKey(question, primaryKey) {
-    if (!primaryKey) return '';
     const normQ = String(question || '').trim().toLowerCase().replace(/\s+/g, ' ');
-    return `${primaryKey}::${normQ}`;
+    if (!normQ) return '';
+    return `${primaryKey || 'ext3'}::${normQ}`;
   }
 
   function getCachedGroundedAnswer(question, primaryKey) {
     const k = makeLocalCacheKey(question, primaryKey);
-    if (!k) return '';
+    if (!k) return null;
     const store = loadStoredJson(AI_CACHE_KEY, []);
     const now = Date.now();
     const hit = store.find((it) => it && it.k === k && now - (it.t || 0) < 7 * 86400 * 1000);
-    return hit && hit.v && isCompleteSentence(hit.v) ? hit.v : '';
+    if (!hit || !hit.v || !isCompleteSentence(hit.v)) return null;
+    return {
+      text: hit.v,
+      external_sources: Array.isArray(hit.ext) ? hit.ext : [],
+      upgraded_grounded: Boolean(hit.upg),
+    };
   }
 
-  function putCachedGroundedAnswer(question, primaryKey, answerText) {
+  function putCachedGroundedAnswer(question, primaryKey, answerText, externalSources, upgradedGrounded) {
     const k = makeLocalCacheKey(question, primaryKey);
-    if (!k || !isCompleteSentence(answerText) || answerText.length < 90) return;
+    if (!k || !isCompleteSentence(answerText) || answerText.length < 80) return;
     const store = loadStoredJson(AI_CACHE_KEY, []).filter((it) => it && it.k !== k);
-    store.unshift({ k, v: answerText, t: Date.now() });
+    store.unshift({
+      k,
+      v: answerText,
+      ext: Array.isArray(externalSources) ? externalSources.slice(0, 4) : [],
+      upg: Boolean(upgradedGrounded),
+      t: Date.now(),
+    });
     saveStoredJson(AI_CACHE_KEY, store.slice(0, 40));
+  }
+
+  function buildExternalSourcesHtml(extSources) {
+    const safeList = (Array.isArray(extSources) ? extSources : []).filter((s) => {
+      if (!s || !s.url) return false;
+      return /^https:\/\/(?:www\.)?(?:quran\.com|hadithbd\.com)\//i.test(String(s.url));
+    });
+    if (safeList.length === 0) return '';
+
+    const cards = safeList
+      .map((s, idx) => {
+        const isQuran = String(s.source_site || '').toLowerCase().includes('quran');
+        const linkLabel = isQuran ? 'Quran.com-এ দেখুন ↗' : 'HadithBD-তে দেখুন ↗';
+        const excerptHtml = s.excerpt
+          ? `<div class="src-submeta" style="margin-top:4px;opacity:0.9;">${escHtml(String(s.excerpt).slice(0, 175))}${String(s.excerpt).length > 175 ? '…' : ''}</div>`
+          : '';
+        return `
+          <div class="source-ref-card">
+            <div class="src-top-row">
+              <span class="src-rank-badge">#${toBnNum(idx + 1)}</span>
+              <div class="src-title-text">${escHtml(s.title || s.source_name)}</div>
+            </div>
+            <div class="src-submeta">
+              <span>${escHtml(s.source_name || s.source_site)}</span>
+            </div>
+            ${excerptHtml}
+            <div class="src-btn-row">
+              <a href="${escHtml(s.url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
+                ${linkLabel}
+              </a>
+            </div>
+          </div>`;
+      })
+      .join('');
+
+    return `
+      <div class="sources-section">
+        <div class="sec-heading">📚 Quran.com ও HadithBD তথ্যসূত্র (${toBnNum(safeList.length)}টি)</div>
+        <div class="sources-grid ${safeList.length >= 2 ? 'multi-src' : ''}">${cards}</div>
+      </div>`;
   }
 
   function abortActiveStream() {
@@ -838,7 +890,8 @@
     }
     const mainCopyBtn = answerCard?.querySelector('.card-actions-bar [data-copy-answer]');
     if (mainCopyBtn) {
-      const srcLine = data.sources?.[0]?.dawahx_url ? `\n\nসূত্র: ${data.sources[0].dawahx_url}` : '';
+      const primaryUrl = data.sources?.[0]?.dawahx_url || data.external_sources?.[0]?.url || '';
+      const srcLine = primaryUrl ? `\n\nসূত্র: ${primaryUrl}` : '';
       mainCopyBtn.setAttribute(
         'data-copy-answer',
         `${data.headline ? data.headline + '\n\n' : ''}${generatedText}${srcLine}`
@@ -846,8 +899,8 @@
     }
   }
 
-  // Stream a single SSE pass with AbortController, replace_text loop-guard & UTF-8 tail flush
-  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken, onReplace) {
+  // Stream a single SSE pass with AbortController, external_sources meta, replace_text loop-guard & UTF-8 tail flush
+  async function streamCloudflarePass(aiUrl, payloadBody, signal, onToken, onReplace, onMeta) {
     const res = await fetch(aiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -873,6 +926,9 @@
         if (evt.error) {
           hadStreamError = true;
           return;
+        }
+        if ((Array.isArray(evt.external_sources) || evt.upgraded_grounded) && typeof onMeta === 'function') {
+          onMeta(evt);
         }
         if (typeof evt.replace_text === 'string') {
           passText = evt.replace_text;
@@ -917,20 +973,50 @@
           : 'chat';
 
     const fallbackHtml = targetEl.innerHTML;
+    const extSlotEl = answerCard ? answerCard.querySelector('[data-ext-sources-slot]') : null;
+    const notFoundActionEl = answerCard ? answerCard.querySelector('[data-notfound-action]') : null;
 
-    // 1. Instant Client Cache Hit strictly for DAWAH X grounded answers
-    if (mode === 'grounded' && data.primary_key && !(historySnapshot && historySnapshot.length && question.length <= 50)) {
+    const applyExternalMetaToCard = (extList, upgradedGrounded) => {
+      if (Array.isArray(extList) && extList.length > 0) {
+        data.external_sources = extList;
+        if (extSlotEl) {
+          extSlotEl.innerHTML = buildExternalSourcesHtml(extList);
+        }
+      }
+      if (upgradedGrounded) {
+        data.upgraded_grounded = true;
+        if (data.status === 'not_found') {
+          data.status = 'grounded_external';
+        }
+        if (notFoundActionEl) {
+          notFoundActionEl.style.display = 'none';
+        }
+      }
+    };
+
+    // 1. Instant Client Cache Hit for grounded queries (DAWAH X + Quran.com + HadithBD)
+    if (
+      (mode === 'grounded' || mode === 'not_found_islamic') &&
+      !(historySnapshot && historySnapshot.length && question.length <= 50)
+    ) {
       const cached = getCachedGroundedAnswer(question, data.primary_key);
-      if (cached) {
+      if (cached && cached.text) {
+        applyExternalMetaToCard(cached.external_sources, cached.upgraded_grounded);
+        const srcTag =
+          cached.external_sources && cached.external_sources.length > 0
+            ? hasRag
+              ? 'DAWAH X · Quran.com · HadithBD'
+              : 'Quran.com · HadithBD'
+            : 'DAWAH X দলিলভিত্তিক';
         targetEl.innerHTML =
           `<div class="ai-stream-box">` +
-          `<div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div>` +
-          `<div class="ai-stream-body">${formatRichText(cached)}</div>` +
+          `<div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>${escHtml(srcTag)}</small></div>` +
+          `<div class="ai-stream-body">${formatRichText(cached.text)}</div>` +
           `</div>` +
-          (fallbackHtml.trim()
+          (!isBubble && fallbackHtml.trim()
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
             : '');
-        applyGeneratedAnswerToCard(answerCard, data, cached);
+        applyGeneratedAnswerToCard(answerCard, data, cached.text);
         return;
       }
     }
@@ -945,6 +1031,7 @@
     const aiUrl = cfAiEndpointBase ? `${cfAiEndpointBase}/api/ai` : 'api/ai';
     let streamBody = null;
     let statusSpan = null;
+    let srcTagEl = null;
     let stopBtn = null;
 
     if (isBubble) {
@@ -957,7 +1044,7 @@
         `<span data-stream-status>✦ বিস্তারিত ব্যাখ্যা তৈরি হচ্ছে...</span>` +
         `<div class="stream-head-right">` +
         `<button type="button" class="stream-stop-btn" data-stop-stream="1">⏹ থামান</button>` +
-        `<small>DAWAH X দলিলভিত্তিক</small>` +
+        `<small data-stream-srctag>DAWAH X দলিলভিত্তিক</small>` +
         `</div>` +
         `</div>` +
         `<div class="ai-stream-body" data-stream-body><span class="stream-cursor"></span></div>` +
@@ -967,13 +1054,39 @@
           : '');
       streamBody = targetEl.querySelector('[data-stream-body]');
       statusSpan = targetEl.querySelector('[data-stream-status]');
+      srcTagEl = targetEl.querySelector('[data-stream-srctag]');
       stopBtn = targetEl.querySelector('[data-stop-stream]');
     }
 
     let fullText = '';
     let loopStoppedClientSide = false;
+    let receivedExtSources = [];
+    let wasUpgradedGrounded = false;
     try {
       let rafScheduled = false;
+
+      const onStreamMeta = (metaEvt) => {
+        if (Array.isArray(metaEvt.external_sources) && metaEvt.external_sources.length > 0) {
+          receivedExtSources = metaEvt.external_sources;
+        }
+        if (metaEvt.upgraded_grounded) {
+          wasUpgradedGrounded = true;
+        }
+        applyExternalMetaToCard(receivedExtSources, wasUpgradedGrounded);
+        if (srcTagEl && receivedExtSources.length > 0) {
+          srcTagEl.textContent = hasRag ? 'DAWAH X · Quran.com · HadithBD' : 'Quran.com · HadithBD';
+        }
+        if (isBubble && wasUpgradedGrounded && streamBody && !targetEl.querySelector('.ai-stream-box')) {
+          targetEl.innerHTML =
+            `<div class="ai-stream-box">` +
+            `<div class="ai-stream-head"><span data-stream-status>✦ যাচাইকৃত দলিল থেকে উত্তর তৈরি হচ্ছে...</span><small data-stream-srctag>Quran.com · HadithBD</small></div>` +
+            `<div class="ai-stream-body" data-stream-body>${formatRichText(repairSpacedBengaliMarks(fullText).trim())}<span class="stream-cursor"></span></div>` +
+            `</div>`;
+          streamBody = targetEl.querySelector('[data-stream-body]');
+          statusSpan = targetEl.querySelector('[data-stream-status]');
+          srcTagEl = targetEl.querySelector('[data-stream-srctag]');
+        }
+      };
 
       const flushRender = (doneNow) => {
         rafScheduled = false;
@@ -1040,7 +1153,8 @@
             fullText += tok;
             onChunk(tok);
           },
-          onReplaceText
+          onReplaceText,
+          onStreamMeta
         );
       } catch (primaryErr) {
         if (loopStoppedClientSide) {
@@ -1055,7 +1169,8 @@
               fullText += tok;
               onChunk(tok);
             },
-            onReplaceText
+            onReplaceText,
+            onStreamMeta
           );
         } else {
           throw primaryErr;
@@ -1072,7 +1187,8 @@
             fullText += tok;
             onChunk(tok);
           },
-          onReplaceText
+          onReplaceText,
+          onStreamMeta
         );
       }
 
@@ -1143,8 +1259,8 @@
         flushRender(true);
         if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
         applyGeneratedAnswerToCard(answerCard, data, cleaned);
-        if (mode === 'grounded' && data.primary_key) {
-          putCachedGroundedAnswer(question, data.primary_key, cleaned);
+        if ((mode === 'grounded' && data.primary_key) || wasUpgradedGrounded) {
+          putCachedGroundedAnswer(question, data.primary_key, cleaned, receivedExtSources, wasUpgradedGrounded);
         }
         return;
       }
@@ -1160,8 +1276,12 @@
           if (streamBody) streamBody.innerHTML = formatRichText(finalTxt);
           if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
           applyGeneratedAnswerToCard(answerCard, data, finalTxt);
-          if (loopStoppedClientSide && mode === 'grounded' && data.primary_key && isCompleteSentence(finalTxt)) {
-            putCachedGroundedAnswer(question, data.primary_key, finalTxt);
+          if (
+            loopStoppedClientSide &&
+            ((mode === 'grounded' && data.primary_key) || wasUpgradedGrounded) &&
+            isCompleteSentence(finalTxt)
+          ) {
+            putCachedGroundedAnswer(question, data.primary_key, finalTxt, receivedExtSources, wasUpgradedGrounded);
           }
           return;
         }
@@ -1196,13 +1316,20 @@
       data.ai_generated = cleanedSaved.length >= 60 ? cleanedSaved : '';
     }
 
+    const hasSavedExt = Array.isArray(data.external_sources) && data.external_sources.length > 0;
+    const savedSrcLabel = hasSavedExt
+      ? data.sources && data.sources.length > 0
+        ? 'DAWAH X · Quran.com · HadithBD'
+        : 'Quran.com · HadithBD'
+      : 'DAWAH X দলিলভিত্তিক';
+
     const rawExplanationHtml = (data.explanation_paragraphs || [])
       .map((p) => `<p>${formatRichText(p)}</p>`)
       .join('');
     const explanationHtml = data.ai_generated
       ? data.is_chat || data.status === 'conversational' || data.status === 'not_found'
         ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
-        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>DAWAH X দলিলভিত্তিক</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
+        : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>${escHtml(savedSrcLabel)}</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
           (rawExplanationHtml
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${rawExplanationHtml}</details>`
             : '')
@@ -1288,8 +1415,15 @@
         </div>`;
     }
 
+    const extSourcesHtml = buildExternalSourcesHtml(data.external_sources);
+
     // Conversational / Tool Bubble Mode
-    if (data.is_chat || data.status === 'conversational' || data.status === 'not_found') {
+    if (
+      data.is_chat ||
+      data.status === 'conversational' ||
+      data.status === 'not_found' ||
+      data.status === 'grounded_external'
+    ) {
       const wrap = document.createElement('article');
       wrap.className = 'msg-ai-chat';
 
@@ -1300,7 +1434,7 @@
 
       const notFoundAction =
         data.status === 'not_found'
-          ? `<div style="margin-top:6px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
+          ? `<div data-notfound-action="1" style="margin-top:6px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
           : '';
 
       const ttsChatPayload = data.ai_generated || [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
@@ -1314,6 +1448,7 @@
           </div>
           ${dalilHtml}
           ${sourcesHtml}
+          <div data-ext-sources-slot>${extSourcesHtml}</div>
           ${videosHtml}
           ${notFoundAction}
           ${quickHtml}
@@ -1391,6 +1526,7 @@
       ${seriesHtml}
       ${dalilHtml}
       ${sourcesHtml}
+      <div data-ext-sources-slot>${extSourcesHtml}</div>
       ${videosHtml}
       ${followUpHtml}
       <div class="card-actions-bar">
