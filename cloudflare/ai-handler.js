@@ -51,7 +51,7 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
-    version: '19.0',
+    version: '20.0',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
@@ -64,8 +64,10 @@ export function handleHealth(env) {
       'https://quran.com/',
       'https://www.hadithbd.com/',
     ],
+    tafsir_enabled: true,
+    quran_audio_enabled: true,
     strict_allowlist_only: true,
-    anti_repetition: 'sentence-stream-guard-v19',
+    anti_repetition: 'sentence-stream-guard-v20',
     edge_cache: true,
     streaming: true,
     strict_rag: true,
@@ -201,10 +203,10 @@ async function computeEdgeCacheRequest(mode, question, headline, primaryCite) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    const rawKey = `v19-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
+    const rawKey = `v20-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return new Request(`https://cache.dawahx.internal/ai-v19/${hex}`, { method: 'GET' });
+    return new Request(`https://cache.dawahx.internal/ai-v20/${hex}`, { method: 'GET' });
   } catch (_) {
     return null;
   }
@@ -217,7 +219,10 @@ function serializeExternalSourcesForClient(externalSources = []) {
     source_name: s.source_name || s.source_site || 'Verified Source',
     title: s.title || '',
     url: s.url || '',
+    audio_url: s.audio_url || '',
+    arabic: String(s.arabic || '').slice(0, 1200),
     excerpt: String(s.excerpt || '').slice(0, 240),
+    full_text: String(s.full_text || s.content || s.excerpt || '').slice(0, 2000),
   }));
 }
 
@@ -678,7 +683,7 @@ export async function handleAIChat(request, env, ctx = null) {
       ? await computeEdgeCacheRequest(initialMode, question, body?.headline, primaryCite)
       : null;
 
-  if (cacheReq && edgeCache) {
+  if (cacheReq && edgeCache && body?.bypass_cache !== true) {
     try {
       const hit = await edgeCache.match(cacheReq);
       if (hit && hit.ok) {
