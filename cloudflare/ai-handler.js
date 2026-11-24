@@ -51,7 +51,7 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
-    version: '20.0',
+    version: '21.0',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
@@ -66,8 +66,10 @@ export function handleHealth(env) {
     ],
     tafsir_enabled: true,
     quran_audio_enabled: true,
+    voice_stt_enabled: hasAI || hasGroq,
+    voice_tts_enabled: true,
     strict_allowlist_only: true,
-    anti_repetition: 'sentence-stream-guard-v20',
+    anti_repetition: 'sentence-stream-guard-v21',
     edge_cache: true,
     streaming: true,
     strict_rag: true,
@@ -860,4 +862,342 @@ export async function handleAIChat(request, env, ctx = null) {
     },
     502
   );
+}
+
+// ===== Voice Subsystems (v21.0): Speech-to-Text (Whisper) & Bilingual Neural TTS =====
+
+function uint8ToBase64(bytes) {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8(b64) {
+  const clean = String(b64 || '')
+    .replace(/^data:[^;]+;base64,/i, '')
+    .replace(/\s+/g, '');
+  const bin = atob(clean);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) {
+    out[i] = bin.charCodeAt(i);
+  }
+  return out;
+}
+
+const WHISPER_SILENCE_HALLUCINATIONS = new Set([
+  'ধন্যবাদ',
+  'ধন্যবাদ।',
+  'সাবস্ক্রাইব করুন',
+  'সাবস্ক্রাইব করুন।',
+  'সাবস্ক্রাইব',
+  'লাইক ও সাবস্ক্রাইব করুন',
+  'thank you',
+  'thank you.',
+  'thanks for watching',
+  'thanks for watching.',
+  'you',
+  '.',
+  '..',
+  '...',
+]);
+
+function cleanWhisperTranscript(raw) {
+  let txt = String(raw || '')
+    .replace(/\[(?:সঙ্গীত|মিউজিক|Music|Applause|Silence|হাসি)\]/giu, '')
+    .replace(/\((?:সঙ্গীত|মিউজিক|Music|Applause|Silence)\)/giu, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!txt) return '';
+  let prev = '';
+  while (txt !== prev) {
+    prev = txt;
+    txt = txt.replace(
+      /([\u0980-\u09FF])[ \t]+([\u0981-\u0983\u09BC\u09BE-\u09CD\u09D7])/gu,
+      '$1$2'
+    );
+  }
+  if (WHISPER_SILENCE_HALLUCINATIONS.has(txt.toLowerCase())) return '';
+  return txt.trim();
+}
+
+export async function handleVoiceSTT(request, env) {
+  if (request.method !== 'POST') {
+    return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
+  }
+
+  let audioBytes = null;
+  let audioBase64 = '';
+  let lang = 'bn';
+  let mimeType = 'audio/webm';
+
+  try {
+    const ctype = (request.headers.get('content-type') || '').toLowerCase();
+    if (ctype.includes('application/json')) {
+      const body = await request.json();
+      const rawAudio = String(body?.audio || '').trim();
+      if (!rawAudio) {
+        return jsonResponse({ ok: false, error: 'missing_audio' }, 400);
+      }
+      audioBytes = base64ToUint8(rawAudio);
+      audioBase64 = uint8ToBase64(audioBytes);
+      if (typeof body?.language === 'string' && /^[a-z]{2}$/i.test(body.language.trim())) {
+        lang = body.language.trim().toLowerCase();
+      }
+      if (typeof body?.mimeType === 'string' && body.mimeType.trim()) {
+        mimeType = body.mimeType.trim();
+      }
+    } else if (ctype.includes('multipart/form-data')) {
+      const form = await request.formData();
+      const file = form.get('audio') || form.get('file');
+      if (!file || typeof file.arrayBuffer !== 'function') {
+        return jsonResponse({ ok: false, error: 'missing_audio_file' }, 400);
+      }
+      const ab = await file.arrayBuffer();
+      audioBytes = new Uint8Array(ab);
+      audioBase64 = uint8ToBase64(audioBytes);
+      const formLang = String(form.get('language') || '').trim();
+      if (/^[a-z]{2}$/i.test(formLang)) lang = formLang.toLowerCase();
+      if (file.type) mimeType = file.type;
+    } else {
+      const ab = await request.arrayBuffer();
+      audioBytes = new Uint8Array(ab);
+      audioBase64 = uint8ToBase64(audioBytes);
+      if (ctype.startsWith('audio/')) mimeType = ctype.split(';')[0].trim();
+    }
+  } catch (err) {
+    return jsonResponse({ ok: false, error: 'invalid_audio_payload', detail: String(err?.message || err) }, 400);
+  }
+
+  if (!audioBytes || audioBytes.byteLength < 200) {
+    return jsonResponse({ ok: false, error: 'empty_audio' }, 400);
+  }
+  if (audioBytes.byteLength > 6 * 1024 * 1024) {
+    return jsonResponse({ ok: false, error: 'audio_too_large' }, 413);
+  }
+
+  const hasWorkersAI = Boolean(env && env.AI && typeof env.AI.run === 'function');
+  let lastErr = null;
+
+  if (hasWorkersAI) {
+    // 1) Primary multilingual model: @cf/openai/whisper-large-v3-turbo (Base64 audio + Bengali Islamic prompt)
+    const turboPayloads = [
+      {
+        audio: audioBase64,
+        task: 'transcribe',
+        language: lang,
+        vad_filter: true,
+        initial_prompt:
+          'আসসালামু আলাইকুম। ইসলামিক প্রশ্ন, কুরআন, হাদীস, সালাত, নামাজ, ওযু, রোজা, যাকাত, ফিতরা, দোয়া, সূরা, তাফসীর।',
+      },
+      {
+        audio: audioBase64,
+        language: lang,
+      },
+    ];
+
+    for (const payload of turboPayloads) {
+      try {
+        const res = await env.AI.run('@cf/openai/whisper-large-v3-turbo', payload);
+        if (res && typeof res.text === 'string') {
+          const cleaned = cleanWhisperTranscript(res.text);
+          return jsonResponse({
+            ok: true,
+            text: cleaned,
+            empty_speech: !cleaned,
+            model: '@cf/openai/whisper-large-v3-turbo',
+          });
+        }
+      } catch (e) {
+        lastErr = e;
+      }
+    }
+
+    // 2) Secondary Workers AI Whisper model (@cf/openai/whisper accepts Uint8Array number[])
+    try {
+      const res = await env.AI.run('@cf/openai/whisper', {
+        audio: Array.from(audioBytes),
+      });
+      if (res && typeof res.text === 'string') {
+        const cleaned = cleanWhisperTranscript(res.text);
+        return jsonResponse({
+          ok: true,
+          text: cleaned,
+          empty_speech: !cleaned,
+          model: '@cf/openai/whisper',
+        });
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  // 3) Optional Groq Whisper backup if GROQ_API_KEY is configured
+  if (env && env.GROQ_API_KEY) {
+    try {
+      const ext = mimeType.includes('mp4') ? 'm4a' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+      const fd = new FormData();
+      fd.append('file', new Blob([audioBytes], { type: mimeType }), `voice.${ext}`);
+      fd.append('model', 'whisper-large-v3-turbo');
+      fd.append('language', lang);
+      const gRes = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${env.GROQ_API_KEY}` },
+        body: fd,
+      });
+      if (gRes.ok) {
+        const data = await gRes.json();
+        const cleaned = cleanWhisperTranscript(data?.text || '');
+        return jsonResponse({
+          ok: true,
+          text: cleaned,
+          empty_speech: !cleaned,
+          model: 'groq/whisper-large-v3-turbo',
+        });
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  return jsonResponse(
+    {
+      ok: false,
+      error: 'stt_unavailable',
+      detail: lastErr ? String(lastErr?.message || lastErr) : 'no_stt_provider',
+    },
+    502
+  );
+}
+
+function sanitizeTtsSegment(raw) {
+  let clean = String(raw || '')
+    .replace(/https?:\/\/\S+/gi, ' ')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*]+)\*/g, '$1')
+    .replace(/^#{1,6}\s+/gm, '')
+    .replace(/\[[০-৯\d]+\]/g, ' ')
+    .replace(/[`~_<>|]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const cps = Array.from(clean);
+  if (cps.length > 200) {
+    clean = cps.slice(0, 200).join('').trim();
+  }
+  return clean;
+}
+
+function resolveTtsLang(requestedLang, text) {
+  const req = String(requestedLang || '').trim().toLowerCase();
+  if (req === 'ar' || req.startsWith('ar-')) return 'ar';
+  if (req === 'en' || req.startsWith('en-')) return 'en';
+  const arMatches = text.match(/[\u0600-\u06FF]/g) || [];
+  const bnMatches = text.match(/[\u0980-\u09FF]/g) || [];
+  if (arMatches.length >= 6 && arMatches.length > bnMatches.length * 1.2) {
+    return 'ar';
+  }
+  return 'bn';
+}
+
+export async function handleVoiceTTS(request, env, ctx) {
+  let rawText = '';
+  let reqLang = 'bn';
+
+  try {
+    if (request.method === 'GET') {
+      const url = new URL(request.url);
+      rawText = url.searchParams.get('q') || url.searchParams.get('text') || '';
+      reqLang = url.searchParams.get('tl') || url.searchParams.get('lang') || 'bn';
+    } else if (request.method === 'POST') {
+      const body = await request.json();
+      rawText = body?.text || body?.q || '';
+      reqLang = body?.lang || body?.tl || 'bn';
+    } else {
+      return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
+    }
+  } catch (_) {
+    return jsonResponse({ ok: false, error: 'invalid_tts_request' }, 400);
+  }
+
+  const text = sanitizeTtsSegment(rawText);
+  if (!text) {
+    return jsonResponse({ ok: false, error: 'empty_text' }, 400);
+  }
+
+  const tl = resolveTtsLang(reqLang, text);
+  const edgeCache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
+  const cacheKeyReq = edgeCache
+    ? new Request(
+        `https://dawahx-tts-cache.local/v21/${tl}?q=${encodeURIComponent(text)}`,
+        { method: 'GET' }
+      )
+    : null;
+
+  if (edgeCache && cacheKeyReq) {
+    try {
+      const cached = await edgeCache.match(cacheKeyReq);
+      if (cached) {
+        return new Response(cached.body, {
+          status: 200,
+          headers: {
+            ...CORS_HEADERS,
+            'Content-Type': 'audio/mpeg',
+            'Cache-Control': 'public, max-age=604800',
+            'X-AI-Cache': 'HIT',
+          },
+        });
+      }
+    } catch (_) {}
+  }
+
+  const encoded = encodeURIComponent(text);
+  const upstreams = [
+    `https://translate.googleapis.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encoded}`,
+    `https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=${tl}&q=${encoded}`,
+    `https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=${tl}&q=${encoded}`,
+  ];
+
+  for (const targetUrl of upstreams) {
+    try {
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), 8000) : null;
+      const res = await fetch(targetUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          Accept: 'audio/mpeg,audio/*;q=0.9,*/*;q=0.5',
+          Referer: 'https://translate.google.com/',
+        },
+        signal: ctrl ? ctrl.signal : undefined,
+      });
+      if (timer) clearTimeout(timer);
+      if (!res.ok) continue;
+
+      const buf = await res.arrayBuffer();
+      if (!buf || buf.byteLength < 200) continue;
+
+      const audioHeaders = {
+        ...CORS_HEADERS,
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': String(buf.byteLength),
+        'Cache-Control': 'public, max-age=604800',
+        'X-AI-Cache': 'MISS',
+      };
+
+      if (edgeCache && cacheKeyReq) {
+        const cacheResp = new Response(buf.slice(0), { status: 200, headers: audioHeaders });
+        const p = edgeCache.put(cacheKeyReq, cacheResp).catch(() => {});
+        if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(p);
+      }
+
+      return new Response(buf, { status: 200, headers: audioHeaders });
+    } catch (_) {
+      // Try next TTS upstream
+    }
+  }
+
+  return jsonResponse({ ok: false, error: 'tts_upstream_unavailable' }, 502);
 }

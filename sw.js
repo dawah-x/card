@@ -1,7 +1,7 @@
-/* DAWAH X AI — Progressive Web App Service Worker (v20.0 — Full 114-Surah + Tafsir + Quran Audio + HadithBD) */
+/* DAWAH X AI — Progressive Web App Service Worker (v21.0 — Voice Input/Output + Full 114-Surah + Tafsir + HadithBD) */
 'use strict';
 
-const CACHE_NAME = 'dawahx-ai-v20';
+const CACHE_NAME = 'dawahx-ai-v21';
 const SHELL_ASSETS = [
   './',
   'index.html',
@@ -41,7 +41,9 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
   if (url.pathname.includes('/api/')) return;
+  if (req.destination === 'audio' || req.headers.has('range') || /\.mp3$/i.test(url.pathname)) return;
 
   // Cache-first for immutable self-hosted WOFF2 fonts & icons
   if (/\.(?:woff2|webp|png|svg)$/i.test(url.pathname) && url.origin === self.location.origin) {
