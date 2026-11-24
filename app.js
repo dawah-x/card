@@ -1,4 +1,4 @@
-/* ===== DAWAH X AI — Clean, Cached, Accurate & Complete Client Engine (v13.0) ===== */
+/* ===== DAWAH X AI — Clean, Cached, Accurate & Complete Client Engine (v21.0) ===== */
 (function () {
   'use strict';
 
@@ -177,6 +177,12 @@
   let currentSessionId = 'sess_' + Date.now();
   let currentSessionTurns = [];
   let activeTtsBtn = null;
+  let ttsSessionSeq = 0;
+  let ttsSynthTimer = null;
+  const sharedTtsAudio = typeof Audio !== 'undefined' ? new Audio() : null;
+  if (sharedTtsAudio) sharedTtsAudio.preload = 'auto';
+  const ttsBlobUrls = new Set();
+  let ttsPreloadAborts = [];
   let activeQuranAudio = null;
   let activeQuranAudioBtn = null;
   const extSourceRegistry = new Map();
@@ -333,9 +339,31 @@
     }
   }
 
+  function getVoiceApiBases() {
+    const storedWorker = (localStorage.getItem(CF_WORKER_KEY) || '').trim().replace(/\/+$/, '');
+    const isHostedOnCf =
+      location.hostname.endsWith('.workers.dev') || location.hostname.endsWith('.pages.dev');
+    const list = [];
+    if (storedWorker) {
+      list.push(location.origin === storedWorker ? '' : storedWorker);
+    }
+    if (cfAiAvailable) {
+      list.push(cfAiEndpointBase);
+    }
+    if (isHostedOnCf || !location.hostname.endsWith('.github.io')) {
+      list.push('');
+    }
+    if (DEFAULT_CF_WORKER_URL && location.origin !== DEFAULT_CF_WORKER_URL) {
+      list.push(DEFAULT_CF_WORKER_URL);
+    }
+    return [...new Set(list)];
+  }
+
   function stopQuranAudio() {
     if (activeQuranAudio) {
       try {
+        activeQuranAudio.onended = null;
+        activeQuranAudio.onerror = null;
         activeQuranAudio.pause();
         activeQuranAudio.currentTime = 0;
       } catch (_) {}
@@ -355,7 +383,6 @@
       return;
     }
     stopSpeech();
-    stopQuranAudio();
 
     const audio = new Audio(audioUrl);
     activeQuranAudio = audio;
@@ -363,12 +390,20 @@
     btnEl.classList.add('tts-active');
     btnEl.textContent = '⏹ থামান';
 
-    let retriedFoundation = false;
+    let retriedAltCdn = false;
     audio.onended = () => stopQuranAudio();
     audio.onerror = () => {
-      if (!retriedFoundation && audioUrl.includes('verses.quran.com/')) {
-        retriedFoundation = true;
-        audio.src = audioUrl.replace('verses.quran.com/', 'verses.quran.foundation/');
+      if (!retriedAltCdn) {
+        retriedAltCdn = true;
+        if (audioUrl.includes('verses.quran.com/')) {
+          audio.src = audioUrl.replace('verses.quran.com/', 'verses.quran.foundation/');
+        } else if (audioUrl.includes('verses.quran.foundation/')) {
+          audio.src = audioUrl.replace('verses.quran.foundation/', 'verses.quran.com/');
+        } else {
+          stopQuranAudio();
+          showToast('তিলাওয়াত লোড করা যায়নি');
+          return;
+        }
         audio.play().catch(() => {
           stopQuranAudio();
           showToast('তিলাওয়াত লোড করা যায়নি');
@@ -379,52 +414,380 @@
       showToast('তিলাওয়াত লোড করা যায়নি');
     };
     audio.play().catch(() => {
+      if (!retriedAltCdn && audioUrl.includes('verses.quran.com/')) {
+        retriedAltCdn = true;
+        audio.src = audioUrl.replace('verses.quran.com/', 'verses.quran.foundation/');
+        audio.play().catch(() => {
+          stopQuranAudio();
+          showToast('তিলাওয়াত চালু করা যায়নি');
+        });
+        return;
+      }
       stopQuranAudio();
+      showToast('তিলাওয়াত চালু করা যায়নি');
     });
   }
 
+  function resetTtsBtnLabel(btn) {
+    if (!btn) return;
+    btn.classList.remove('tts-active');
+    btn.innerHTML = btn.id === 'drawerSpeakBtn' ? '🔊<span class="r-lbl"> শুনুন</span>' : '🔊 শুনুন';
+  }
+
   function stopSpeech() {
+    ttsSessionSeq++;
     stopQuranAudio();
+    if (ttsSynthTimer) {
+      clearTimeout(ttsSynthTimer);
+      ttsSynthTimer = null;
+    }
+    for (const ctrl of ttsPreloadAborts) {
+      try {
+        ctrl.abort();
+      } catch (_) {}
+    }
+    ttsPreloadAborts = [];
+
+    if (sharedTtsAudio) {
+      try {
+        sharedTtsAudio.onended = null;
+        sharedTtsAudio.onerror = null;
+        sharedTtsAudio.onplaying = null;
+        sharedTtsAudio.pause();
+        sharedTtsAudio.removeAttribute('src');
+        sharedTtsAudio.load();
+      } catch (_) {}
+    }
+    for (const u of ttsBlobUrls) {
+      try {
+        URL.revokeObjectURL(u);
+      } catch (_) {}
+    }
+    ttsBlobUrls.clear();
+
     if (window.speechSynthesis) {
-      window.speechSynthesis.cancel();
+      try {
+        window.speechSynthesis.cancel();
+      } catch (_) {}
     }
     if (activeTtsBtn) {
-      activeTtsBtn.classList.remove('tts-active');
-      activeTtsBtn.innerHTML = activeTtsBtn.id === 'drawerSpeakBtn' ? '🔊<span class="r-lbl"> শুনুন</span>' : '🔊 শুনুন';
+      resetTtsBtnLabel(activeTtsBtn);
       activeTtsBtn = null;
     }
   }
 
-  function toggleSpeakText(rawText, btnEl) {
+  function splitRunIntoShortChunks(text, lang, maxLen) {
+    const out = [];
+    const sentences = String(text || '')
+      .split(/(?<=[।॥?!\n؛۔;])\s+/u)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    for (const sent of sentences) {
+      const cps = Array.from(sent);
+      if (cps.length <= maxLen) {
+        if (out.length > 0 && Array.from(out[out.length - 1].text).length + 1 + cps.length <= maxLen) {
+          out[out.length - 1].text += ' ' + sent;
+        } else {
+          out.push({ text: sent, lang });
+        }
+        continue;
+      }
+      // Split long sentences along commas/spaces without cutting words
+      const words = sent.split(/\s+/);
+      let buf = '';
+      for (const w of words) {
+        const candidate = buf ? `${buf} ${w}` : w;
+        if (Array.from(candidate).length <= maxLen) {
+          buf = candidate;
+        } else {
+          if (buf) out.push({ text: buf, lang });
+          if (Array.from(w).length > maxLen) {
+            const wCps = Array.from(w);
+            for (let i = 0; i < wCps.length; i += maxLen) {
+              out.push({ text: wCps.slice(i, i + maxLen).join(''), lang });
+            }
+            buf = '';
+          } else {
+            buf = w;
+          }
+        }
+      }
+      if (buf) out.push({ text: buf, lang });
+    }
+    return out;
+  }
+
+  function buildSpeechChunks(rawText) {
+    const cleaned = repairSpacedBengaliMarks(String(rawText || ''))
+      .replace(/https?:\/\/\S+/gi, ' ')
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\*([^*]+)\*/g, '$1')
+      .replace(/^#{1,6}\s+/gm, '')
+      .replace(/\[[০-৯\d]+\]/g, ' ')
+      .replace(/[•●▪▸`~_<>|]/g, ' ')
+      .replace(/\s+\n/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+    if (!cleaned) return [];
+
+    // Separate contiguous Arabic Quran/Hadith spans (>= 6 Arabic chars) from Bengali spans
+    const arRegex = /([\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF][\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\s\u064B-\u065F\u0670\uFD50-\uFDFF\uFE70-\uFEFF۝﴿﴾().,،؛:«»\-]{5,})/gu;
+    const runs = [];
+    let lastIndex = 0;
+    let match;
+    while ((match = arRegex.exec(cleaned)) !== null) {
+      if (match.index > lastIndex) {
+        const before = cleaned.slice(lastIndex, match.index).trim();
+        if (before) runs.push({ text: before, lang: 'bn' });
+      }
+      const arSpan = match[1].replace(/[﴿﴾۝«»]/g, ' ').replace(/\s+/g, ' ').trim();
+      const arLetters = (arSpan.match(/[\u0600-\u06FF]/g) || []).length;
+      if (arLetters >= 5) {
+        runs.push({ text: arSpan, lang: 'ar' });
+      } else if (arSpan) {
+        runs.push({ text: arSpan, lang: 'bn' });
+      }
+      lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < cleaned.length) {
+      const tail = cleaned.slice(lastIndex).trim();
+      if (tail) runs.push({ text: tail, lang: 'bn' });
+    }
+
+    const chunks = [];
+    for (const r of runs) {
+      const sub = splitRunIntoShortChunks(r.text, r.lang, 175);
+      for (const item of sub) {
+        if (/[A-Za-z\u0980-\u09FF\u0600-\u06FF০-৯\d]/u.test(item.text)) {
+          chunks.push(item);
+        }
+        if (chunks.length >= 40) break;
+      }
+      if (chunks.length >= 40) break;
+    }
+    return chunks;
+  }
+
+  function buildTtsEndpointUrl(base, chunk) {
+    const prefix = base ? `${base}/api/tts` : 'api/tts';
+    return `${prefix}?tl=${encodeURIComponent(chunk.lang || 'bn')}&q=${encodeURIComponent(chunk.text)}`;
+  }
+
+  function waitForSynthVoices(timeoutMs) {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis) {
+        resolve([]);
+        return;
+      }
+      const existing = window.speechSynthesis.getVoices() || [];
+      if (existing.length > 0) {
+        resolve(existing);
+        return;
+      }
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        resolve(window.speechSynthesis.getVoices() || []);
+      };
+      const timer = setTimeout(finish, timeoutMs || 600);
+      window.speechSynthesis.addEventListener(
+        'voiceschanged',
+        () => {
+          clearTimeout(timer);
+          finish();
+        },
+        { once: true }
+      );
+    });
+  }
+
+  async function speakViaBrowserSynthesis(chunks, btnEl, sessionId) {
     if (!window.speechSynthesis) {
-      showToast('দুঃখিত, এই ব্রাউজারে অডিও সাপোর্ট নেই');
+      if (sessionId === ttsSessionSeq) {
+        stopSpeech();
+        showToast('অডিও চালাতে ইন্টারনেট সংযোগ চেক করুন');
+      }
       return;
     }
+
+    const voices = await waitForSynthVoices(650);
+    if (sessionId !== ttsSessionSeq) return;
+
+    const bnVoice =
+      voices.find((v) => /bn[-_]?BD/i.test(v.lang)) ||
+      voices.find((v) => /^bn/i.test(v.lang)) ||
+      voices.find((v) => /bengali|bangla/i.test(v.name || ''));
+    const arVoice =
+      voices.find((v) => /^ar/i.test(v.lang)) ||
+      voices.find((v) => /arabic/i.test(v.name || ''));
+
+    const needsBn = chunks.some((c) => c.lang === 'bn' && /[\u0980-\u09FF]/.test(c.text));
+    if (needsBn && !bnVoice) {
+      // Device OS lacks a Bengali voice (common on Windows desktop) and cloud TTS was unreachable
+      stopSpeech();
+      showToast('বাংলা ভয়েস চালাতে ইন্টারনেট সংযোগ সচল রাখুন');
+      return;
+    }
+
+    try {
+      window.speechSynthesis.cancel();
+    } catch (_) {}
+
+    let idx = 0;
+    const speakNext = () => {
+      if (sessionId !== ttsSessionSeq) return;
+      if (idx >= chunks.length) {
+        stopSpeech();
+        return;
+      }
+      const seg = chunks[idx++];
+      const utter = new SpeechSynthesisUtterance(seg.text);
+      if (seg.lang === 'ar') {
+        if (arVoice) utter.voice = arVoice;
+        utter.lang = arVoice ? arVoice.lang : 'ar-SA';
+        utter.rate = 0.92;
+      } else {
+        if (bnVoice) utter.voice = bnVoice;
+        utter.lang = bnVoice ? bnVoice.lang : 'bn-BD';
+        utter.rate = 0.96;
+      }
+      utter.onstart = () => {
+        if (sessionId === ttsSessionSeq && activeTtsBtn === btnEl) {
+          btnEl.textContent = '⏹ থামান';
+        }
+      };
+      utter.onend = () => speakNext();
+      utter.onerror = () => {
+        if (idx < chunks.length) speakNext();
+        else stopSpeech();
+      };
+      window.speechSynthesis.speak(utter);
+    };
+
+    ttsSynthTimer = setTimeout(speakNext, 65);
+  }
+
+  function toggleSpeakText(rawText, btnEl) {
     if (activeTtsBtn === btnEl) {
       stopSpeech();
       return;
     }
     stopSpeech();
-    const clean = String(rawText || '')
-      .replace(/\*\*([^*]+)\*\*/g, '$1')
-      .replace(/\*([^*]+)\*/g, '$1')
-      .replace(/https?:\/\/\S+/g, '')
-      .trim();
-    if (!clean) return;
 
-    const utter = new SpeechSynthesisUtterance(clean.slice(0, 2600));
-    const voices = window.speechSynthesis.getVoices() || [];
-    const bnVoice = voices.find((v) => /bn[-_]?BD/i.test(v.lang)) || voices.find((v) => /^bn/i.test(v.lang));
-    if (bnVoice) utter.voice = bnVoice;
-    utter.lang = bnVoice ? bnVoice.lang : 'bn-BD';
-    utter.rate = 0.96;
+    const chunks = buildSpeechChunks(rawText);
+    if (!chunks.length) {
+      showToast('শোনার মতো কোনো লেখা পাওয়া যায়নি');
+      return;
+    }
 
+    const sessionId = ttsSessionSeq;
     activeTtsBtn = btnEl;
     btnEl.classList.add('tts-active');
-    btnEl.textContent = '⏹ থামান';
-    utter.onend = () => stopSpeech();
-    utter.onerror = () => stopSpeech();
-    window.speechSynthesis.speak(utter);
+    btnEl.textContent = '⏳ লোড...';
+
+    const bases = getVoiceApiBases();
+    if (!sharedTtsAudio || !bases.length) {
+      speakViaBrowserSynthesis(chunks, btnEl, sessionId);
+      return;
+    }
+
+    let baseIdx = 0;
+    let chunkIdx = 0;
+    const preloadedMap = new Map();
+
+    const preloadChunk = (targetIdx, base) => {
+      if (targetIdx >= chunks.length || preloadedMap.has(targetIdx)) return;
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      if (ctrl) ttsPreloadAborts.push(ctrl);
+      const url = buildTtsEndpointUrl(base, chunks[targetIdx]);
+      fetch(url, { mode: 'cors', signal: ctrl ? ctrl.signal : undefined })
+        .then((res) => {
+          if (!res.ok) throw new Error('tts_http_' + res.status);
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (ct && !ct.includes('audio') && !ct.includes('octet-stream')) {
+            throw new Error('tts_not_audio');
+          }
+          return res.blob();
+        })
+        .then((blob) => {
+          if (sessionId !== ttsSessionSeq || !blob || blob.size < 200) return;
+          const objUrl = URL.createObjectURL(blob);
+          ttsBlobUrls.add(objUrl);
+          preloadedMap.set(targetIdx, objUrl);
+        })
+        .catch(() => {});
+    };
+
+    const playCurrentChunk = () => {
+      if (sessionId !== ttsSessionSeq) return;
+      if (chunkIdx >= chunks.length) {
+        stopSpeech();
+        return;
+      }
+
+      const activeBase = bases[baseIdx];
+      const readyBlobUrl = preloadedMap.get(chunkIdx);
+      const srcUrl = readyBlobUrl || buildTtsEndpointUrl(activeBase, chunks[chunkIdx]);
+
+      sharedTtsAudio.onplaying = () => {
+        if (sessionId !== ttsSessionSeq) return;
+        if (activeTtsBtn === btnEl) {
+          btnEl.textContent = '⏹ থামান';
+        }
+        preloadChunk(chunkIdx + 1, activeBase);
+        if (chunkIdx + 2 < chunks.length) {
+          preloadChunk(chunkIdx + 2, activeBase);
+        }
+      };
+
+      sharedTtsAudio.onended = () => {
+        if (sessionId !== ttsSessionSeq) return;
+        chunkIdx++;
+        playCurrentChunk();
+      };
+
+      sharedTtsAudio.onerror = () => {
+        if (sessionId !== ttsSessionSeq) return;
+        if (chunkIdx === 0 && baseIdx + 1 < bases.length) {
+          baseIdx++;
+          preloadedMap.clear();
+          playCurrentChunk();
+          return;
+        }
+        if (chunkIdx === 0) {
+          speakViaBrowserSynthesis(chunks, btnEl, sessionId);
+          return;
+        }
+        chunkIdx++;
+        playCurrentChunk();
+      };
+
+      sharedTtsAudio.src = srcUrl;
+      sharedTtsAudio.playbackRate = 1.0;
+      const playPromise = sharedTtsAudio.play();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch((err) => {
+          if (sessionId !== ttsSessionSeq) return;
+          if (err && err.name === 'AbortError') return;
+          if (chunkIdx === 0 && baseIdx + 1 < bases.length) {
+            baseIdx++;
+            preloadedMap.clear();
+            playCurrentChunk();
+            return;
+          }
+          if (chunkIdx === 0) {
+            speakViaBrowserSynthesis(chunks, btnEl, sessionId);
+          } else {
+            stopSpeech();
+          }
+        });
+      }
+    };
+
+    // Trigger Chunk 0 synchronously inside user gesture so mobile Safari/Chrome unlock sharedTtsAudio
+    playCurrentChunk();
   }
 
   function updateLivePrayerBadge() {
@@ -809,7 +1172,18 @@
 
     const speakBtn = e.target.closest('[data-speak-text]');
     if (speakBtn) {
-      toggleSpeakText(speakBtn.getAttribute('data-speak-text'), speakBtn);
+      let payload = speakBtn.getAttribute('data-speak-text') || '';
+      const cardEl = speakBtn.closest('.msg-ai-card, .msg-ai-chat');
+      if (cardEl) {
+        const headTxt = cardEl.querySelector('.ai-headline')?.textContent?.trim() || '';
+        const streamBodyEl = cardEl.querySelector('.ai-stream-body');
+        const slotEl = cardEl.querySelector('[data-llm-slot]');
+        const liveBody = (streamBodyEl ? streamBodyEl.innerText : slotEl ? slotEl.innerText : '').trim();
+        if (liveBody && (!payload.trim() || liveBody.length > payload.length * 0.75)) {
+          payload = headTxt ? `${headTxt}। ${liveBody}` : liveBody;
+        }
+      }
+      toggleSpeakText(payload, speakBtn);
       return;
     }
 
@@ -1087,7 +1461,7 @@
         const bnRaw = h.translations?.[0]?.text || '';
         const bn = String(bnRaw).replace(/<sup[^>]*>[\s\S]*?<\/sup>/gi, '').replace(/<[^>]+>/g, '').trim();
         if (!bn && !ar) continue;
-        const audioUrl = `https://verses.quran.com/Alafasy/mp3/${ch.padStart(3, '0')}${ay.padStart(3, '0')}.mp3`;
+        const audioUrl = `https://verses.quran.foundation/Alafasy/mp3/${ch.padStart(3, '0')}${ay.padStart(3, '0')}.mp3`;
         const qUrl = `https://quran.com/${ch}/${ay}`;
         const vKeyBn = toBnNum(vKey);
         extList.push({
@@ -2011,40 +2385,418 @@
     readerProgressEl.style.width = pct + '%';
   });
 
-  // Voice Speech-to-Text (bn-BD)
+  // ===== Dual-Engine Voice Speech-to-Text (Browser SpeechRecognition + Cloudflare Workers AI Whisper) =====
   const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (SpeechRec && voiceBtn) {
-    const recognition = new SpeechRec();
-    recognition.lang = 'bn-BD';
-    recognition.interimResults = false;
-    let listening = false;
+  const canMediaRecord = Boolean(
+    navigator.mediaDevices &&
+      typeof navigator.mediaDevices.getUserMedia === 'function' &&
+      typeof window.MediaRecorder !== 'undefined'
+  );
 
-    voiceBtn.addEventListener('click', () => {
-      if (listening) {
-        recognition.stop();
+  if (voiceBtn && (SpeechRec || canMediaRecord)) {
+    const DEFAULT_PLACEHOLDER =
+      questionInput?.getAttribute('placeholder') || 'আপনার ইসলামিক প্রশ্ন বা বার্তা লিখুন...';
+    let voiceState = 'idle'; // 'idle' | 'recording_web' | 'recording_whisper' | 'transcribing'
+    let preferCloudStt = !SpeechRec;
+    let activeRecInstance = null;
+    let activeMediaRecorder = null;
+    let activeMediaStream = null;
+    let activeAudioCtx = null;
+    let silenceRafId = 0;
+    let maxRecordTimer = null;
+
+    function setVoiceUiState(state) {
+      voiceState = state;
+      voiceBtn.classList.toggle('recording', state === 'recording_web' || state === 'recording_whisper');
+      voiceBtn.classList.toggle('transcribing', state === 'transcribing');
+      askForm?.classList.toggle('voice-listening', state === 'recording_web' || state === 'recording_whisper');
+
+      if (state === 'recording_web' || state === 'recording_whisper') {
+        voiceBtn.textContent = '⏹';
+        voiceBtn.title = 'বলা শেষ হলে থামাতে চাপুন';
+        if (questionInput) {
+          questionInput.setAttribute('placeholder', '🎙 শুনছি... বাংলায় আপনার প্রশ্ন বলুন (থামাতে ⏹ চাপুন)');
+        }
+      } else if (state === 'transcribing') {
+        voiceBtn.textContent = '⏳';
+        voiceBtn.title = 'কণ্ঠ থেকে বাংলায় লেখা হচ্ছে...';
+        if (questionInput) {
+          questionInput.setAttribute('placeholder', '⏳ কণ্ঠ থেকে বাংলায় রূপান্তর হচ্ছে...');
+        }
+      } else {
+        voiceBtn.textContent = '🎙';
+        voiceBtn.title = 'কণ্ঠে বলুন (বাংলা)';
+        if (questionInput) {
+          questionInput.setAttribute('placeholder', DEFAULT_PLACEHOLDER);
+        }
+      }
+    }
+
+    function commitVoiceTranscript(baseText, newText) {
+      const cleaned = repairSpacedBengaliMarks(String(newText || '')).replace(/\s+/g, ' ').trim();
+      if (!cleaned || !questionInput) return false;
+      questionInput.value = baseText ? `${baseText} ${cleaned}`.trim() : cleaned;
+      questionInput.dispatchEvent(new Event('input'));
+      questionInput.focus();
+      return true;
+    }
+
+    function cleanupWhisperMedia() {
+      if (silenceRafId) {
+        cancelAnimationFrame(silenceRafId);
+        silenceRafId = 0;
+      }
+      if (maxRecordTimer) {
+        clearTimeout(maxRecordTimer);
+        maxRecordTimer = null;
+      }
+      if (activeAudioCtx) {
+        try {
+          activeAudioCtx.close();
+        } catch (_) {}
+        activeAudioCtx = null;
+      }
+      if (activeMediaStream) {
+        try {
+          activeMediaStream.getTracks().forEach((t) => t.stop());
+        } catch (_) {}
+        activeMediaStream = null;
+      }
+      activeMediaRecorder = null;
+    }
+
+    function blobToDataUrl(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result || ''));
+        reader.onerror = () => reject(new Error('read_failed'));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    async function sendAudioToWhisperStt(blob, mimeType, baseText) {
+      setVoiceUiState('transcribing');
+      try {
+        const dataUrl = await blobToDataUrl(blob);
+        const bases = getVoiceApiBases();
+        let lastError = null;
+
+        for (const base of bases) {
+          const sttUrl = base ? `${base}/api/stt` : 'api/stt';
+          const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+          const timer = ctrl ? setTimeout(() => ctrl.abort(), 18000) : null;
+          try {
+            const res = await fetch(sttUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                audio: dataUrl,
+                mimeType: mimeType || blob.type || 'audio/webm',
+                language: 'bn',
+              }),
+              signal: ctrl ? ctrl.signal : undefined,
+            });
+            if (timer) clearTimeout(timer);
+            if (!res.ok) continue;
+            const ctype = (res.headers.get('content-type') || '').toLowerCase();
+            if (!ctype.includes('application/json')) continue;
+            const data = await res.json();
+            if (data && data.ok) {
+              setVoiceUiState('idle');
+              if (data.text && commitVoiceTranscript(baseText, data.text)) {
+                showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+              } else {
+                showToast('কোনো কথা শোনা যায়নি — মাইক্রোফোনের কাছে স্পষ্টভাবে বলুন');
+              }
+              return;
+            }
+          } catch (err) {
+            if (timer) clearTimeout(timer);
+            lastError = err;
+          }
+        }
+
+        setVoiceUiState('idle');
+        showToast(
+          lastError
+            ? 'কণ্ঠ রূপান্তর সার্ভারে সংযোগ করা যায়নি — ইন্টারনেট চেক করুন'
+            : 'কণ্ঠ থেকে লেখা তৈরি করা যায়নি — আবার চেষ্টা করুন'
+        );
+      } catch (_) {
+        setVoiceUiState('idle');
+        showToast('কণ্ঠ রেকর্ডিং প্রক্রিয়া করা যায়নি');
+      }
+    }
+
+    async function startCloudWhisperRecording() {
+      if (!canMediaRecord) {
+        setVoiceUiState('idle');
+        showToast('দুঃখিত, এই ব্রাউজারে মাইক্রোফোন রেকর্ডিং সাপোর্ট নেই');
         return;
       }
-      listening = true;
-      voiceBtn.classList.add('recording');
-      recognition.start();
-    });
 
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || '';
-      if (transcript) {
-        questionInput.value = (questionInput.value + ' ' + transcript).trim();
-        questionInput.dispatchEvent(new Event('input'));
-        questionInput.focus();
+      const baseText = (questionInput?.value || '').trim();
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      } catch (err) {
+        setVoiceUiState('idle');
+        const name = String(err?.name || '');
+        if (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'SecurityError') {
+          showToast('⚠ ব্রাউজারের অ্যাড্রেস বার থেকে মাইক্রোফোন (Microphone) অনুমতি দিন');
+        } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+          showToast('⚠ আপনার ডিভাইসে কোনো মাইক্রোফোন পাওয়া যায়নি');
+        } else {
+          showToast('⚠ মাইক্রোফোন চালু করা যায়নি — অনুমতি চেক করুন');
+        }
+        return;
       }
-    };
-    recognition.onend = () => {
-      listening = false;
-      voiceBtn.classList.remove('recording');
-    };
-    recognition.onerror = () => {
-      listening = false;
-      voiceBtn.classList.remove('recording');
-    };
+
+      activeMediaStream = stream;
+      const mimeCandidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+        'audio/mp4',
+      ];
+      let chosenMime = '';
+      if (typeof MediaRecorder.isTypeSupported === 'function') {
+        chosenMime = mimeCandidates.find((m) => MediaRecorder.isTypeSupported(m)) || '';
+      }
+
+      const chunks = [];
+      let recorder;
+      try {
+        recorder = chosenMime ? new MediaRecorder(stream, { mimeType: chosenMime }) : new MediaRecorder(stream);
+      } catch (_) {
+        recorder = new MediaRecorder(stream);
+      }
+      activeMediaRecorder = recorder;
+
+      recorder.ondataavailable = (ev) => {
+        if (ev.data && ev.data.size > 0) chunks.push(ev.data);
+      };
+
+      recorder.onstop = () => {
+        const finalMime = recorder.mimeType || chosenMime || 'audio/webm';
+        cleanupWhisperMedia();
+        const blob = new Blob(chunks, { type: finalMime });
+        if (!blob || blob.size < 350) {
+          setVoiceUiState('idle');
+          showToast('কোনো কথা রেকর্ড হয়নি — একটু স্পষ্টভাবে বলুন');
+          return;
+        }
+        sendAudioToWhisperStt(blob, finalMime, baseText);
+      };
+
+      recorder.onerror = () => {
+        cleanupWhisperMedia();
+        setVoiceUiState('idle');
+        showToast('রেকর্ডিং চলাকালে ত্রুটি হয়েছে');
+      };
+
+      setVoiceUiState('recording_whisper');
+      showToast('🎙 শুনছি... বলা শেষে ⏹ চাপুন');
+      recorder.start(250);
+
+      // Automatic post-speech silence stop (1.85s quiet after speech detected) + 25s max cap
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          const actx = new AudioCtx();
+          activeAudioCtx = actx;
+          const src = actx.createMediaStreamSource(stream);
+          const analyser = actx.createAnalyser();
+          analyser.fftSize = 512;
+          src.connect(analyser);
+          const buf = new Uint8Array(analyser.fftSize);
+          let heardSpeech = false;
+          let speechStartAt = 0;
+          let quietSince = 0;
+          const startedAt = performance.now();
+
+          const monitorSilence = () => {
+            if (voiceState !== 'recording_whisper' || !activeMediaRecorder) return;
+            analyser.getByteTimeDomainData(buf);
+            let sumSq = 0;
+            for (let i = 0; i < buf.length; i++) {
+              const v = (buf[i] - 128) / 128;
+              sumSq += v * v;
+            }
+            const rms = Math.sqrt(sumSq / buf.length);
+            const now = performance.now();
+
+            if (rms > 0.028) {
+              if (!heardSpeech) {
+                heardSpeech = true;
+                speechStartAt = now;
+              }
+              quietSince = 0;
+            } else if (heardSpeech && now - speechStartAt > 750) {
+              if (!quietSince) quietSince = now;
+              else if (now - quietSince > 1850 && now - startedAt > 1600) {
+                if (activeMediaRecorder && activeMediaRecorder.state === 'recording') {
+                  activeMediaRecorder.stop();
+                }
+                return;
+              }
+            }
+            silenceRafId = requestAnimationFrame(monitorSilence);
+          };
+          silenceRafId = requestAnimationFrame(monitorSilence);
+        }
+      } catch (_) {}
+
+      maxRecordTimer = setTimeout(() => {
+        if (activeMediaRecorder && activeMediaRecorder.state === 'recording') {
+          activeMediaRecorder.stop();
+        }
+      }, 25000);
+    }
+
+    function startBrowserSpeechRecognition() {
+      const baseText = (questionInput?.value || '').trim();
+      const recognition = new SpeechRec();
+      activeRecInstance = recognition;
+      recognition.lang = 'bn-BD';
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      let gotAnyTranscript = false;
+      let switchedToWhisper = false;
+
+      recognition.onstart = () => {
+        setVoiceUiState('recording_web');
+        showToast('🎙 শুনছি... বাংলায় বলুন');
+      };
+
+      recognition.onresult = (event) => {
+        let finalPart = '';
+        let interimPart = '';
+        for (let i = 0; i < event.results.length; i++) {
+          const piece = event.results[i]?.[0]?.transcript || '';
+          if (event.results[i].isFinal) {
+            finalPart += piece + ' ';
+          } else {
+            interimPart += piece;
+          }
+        }
+        const combined = repairSpacedBengaliMarks(`${finalPart} ${interimPart}`).replace(/\s+/g, ' ').trim();
+        if (combined && questionInput) {
+          gotAnyTranscript = true;
+          questionInput.value = baseText ? `${baseText} ${combined}`.trim() : combined;
+          questionInput.dispatchEvent(new Event('input'));
+          questionInput.focus();
+        }
+      };
+
+      recognition.onerror = (event) => {
+        const code = String(event?.error || '');
+        activeRecInstance = null;
+
+        // Brave / Chromium without Google Speech API / Firefox forks / blocked speech service -> seamlessly switch to Cloudflare Whisper!
+        if (
+          canMediaRecord &&
+          (code === 'network' || code === 'service-not-allowed' || code === 'language-not-supported')
+        ) {
+          preferCloudStt = true;
+          switchedToWhisper = true;
+          try {
+            recognition.abort();
+          } catch (_) {}
+          startCloudWhisperRecording();
+          return;
+        }
+
+        setVoiceUiState('idle');
+        if (code === 'not-allowed' || code === 'permission-denied') {
+          showToast('⚠ ব্রাউজারের অ্যাড্রেস বার থেকে মাইক্রোফোন (Microphone) অনুমতি দিন');
+        } else if (code === 'audio-capture') {
+          showToast('⚠ আপনার ডিভাইসে কোনো মাইক্রোফোন পাওয়া যায়নি');
+        } else if (code === 'no-speech') {
+          showToast('কোনো কথা শোনা যায়নি — মাইক্রোফোনের কাছে আবার বলুন');
+        } else if (code && code !== 'aborted') {
+          if (canMediaRecord) {
+            preferCloudStt = true;
+            switchedToWhisper = true;
+            startCloudWhisperRecording();
+          } else {
+            showToast('কণ্ঠ শনাক্ত করা যায়নি — আবার চেষ্টা করুন');
+          }
+        }
+      };
+
+      recognition.onend = () => {
+        if (switchedToWhisper) return;
+        activeRecInstance = null;
+        if (voiceState === 'recording_web') {
+          setVoiceUiState('idle');
+          if (gotAnyTranscript) {
+            showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+          }
+        }
+      };
+
+      try {
+        setVoiceUiState('recording_web');
+        recognition.start();
+      } catch (_) {
+        activeRecInstance = null;
+        if (canMediaRecord) {
+          preferCloudStt = true;
+          startCloudWhisperRecording();
+        } else {
+          setVoiceUiState('idle');
+          showToast('মাইক্রোফোন চালু করা যায়নি');
+        }
+      }
+    }
+
+    voiceBtn.addEventListener('click', () => {
+      if (voiceState === 'transcribing') return;
+      stopSpeech();
+
+      if (voiceState === 'recording_web') {
+        if (activeRecInstance) {
+          try {
+            activeRecInstance.stop();
+          } catch (_) {
+            setVoiceUiState('idle');
+          }
+        } else {
+          setVoiceUiState('idle');
+        }
+        return;
+      }
+
+      if (voiceState === 'recording_whisper') {
+        if (activeMediaRecorder && activeMediaRecorder.state === 'recording') {
+          try {
+            activeMediaRecorder.stop();
+          } catch (_) {
+            cleanupWhisperMedia();
+            setVoiceUiState('idle');
+          }
+        } else {
+          cleanupWhisperMedia();
+          setVoiceUiState('idle');
+        }
+        return;
+      }
+
+      if (!preferCloudStt && SpeechRec) {
+        startBrowserSpeechRecognition();
+      } else {
+        startCloudWhisperRecording();
+      }
+    });
   } else if (voiceBtn) {
     voiceBtn.style.display = 'none';
   }

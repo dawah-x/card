@@ -1,4 +1,11 @@
-import { handleAIChat, handleHealth, handleOptions, jsonResponse } from './ai-handler.js';
+import {
+  handleAIChat,
+  handleHealth,
+  handleOptions,
+  handleVoiceSTT,
+  handleVoiceTTS,
+  jsonResponse,
+} from './ai-handler.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -15,6 +22,12 @@ export default {
       if ((path === '/api/ai' || path === '/api/chat') && request.method === 'POST') {
         return handleAIChat(request, env, ctx);
       }
+      if (path === '/api/stt' && request.method === 'POST') {
+        return handleVoiceSTT(request, env);
+      }
+      if (path === '/api/tts' && (request.method === 'GET' || request.method === 'POST')) {
+        return handleVoiceTTS(request, env, ctx);
+      }
       return jsonResponse({ ok: false, error: 'Not found' }, 404);
     }
 
@@ -26,7 +39,7 @@ export default {
     return jsonResponse({
       ok: true,
       service: 'DAWAH X AI — Cloudflare Workers AI Endpoint',
-      endpoints: ['GET /api/health', 'POST /api/ai'],
+      endpoints: ['GET /api/health', 'POST /api/ai', 'POST /api/stt', 'GET/POST /api/tts'],
     });
   },
 };
