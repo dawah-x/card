@@ -51,7 +51,7 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
-    version: '21.0',
+    version: '22.0',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
@@ -64,12 +64,20 @@ export function handleHealth(env) {
       'https://quran.com/',
       'https://www.hadithbd.com/',
     ],
+    dawahx_collections: {
+      quran_surahs: 114,
+      hadith_books: 28,
+      hadith_records: 61910,
+      islamic_book_collections: 10,
+      islamic_book_volumes: 102,
+      fatwas_and_articles: 24207,
+    },
     tafsir_enabled: true,
     quran_audio_enabled: true,
     voice_stt_enabled: hasAI || hasGroq,
     voice_tts_enabled: true,
     strict_allowlist_only: true,
-    anti_repetition: 'sentence-stream-guard-v21',
+    anti_repetition: 'sentence-stream-guard-v22',
     edge_cache: true,
     streaming: true,
     strict_rag: true,
@@ -205,10 +213,10 @@ async function computeEdgeCacheRequest(mode, question, headline, primaryCite) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    const rawKey = `v20-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
+    const rawKey = `v22-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return new Request(`https://cache.dawahx.internal/ai-v20/${hex}`, { method: 'GET' });
+    return new Request(`https://cache.dawahx.internal/ai-v22/${hex}`, { method: 'GET' });
   } catch (_) {
     return null;
   }
@@ -350,8 +358,9 @@ function buildMessages({
     for (let i = 0; i < safeRag.length; i++) {
       const c = safeRag[i];
       const bnRef = toBnIdx(refCounter++);
-      const header = `[${bnRef}] DAWAH X — ${String(c.title || '').slice(0, 180)} (${String(c.source || 'DAWAH X')})`;
-      const budget = i === 0 ? 1900 : 950;
+      const label = String(c.title || c.citation || '').replace(/^\[\d+\]\s*/, '').slice(0, 200);
+      const header = `[${bnRef}] DAWAH X — ${label}${c.source ? ` (${String(c.source)})` : ''}`;
+      const budget = i === 0 ? 2100 : 1050;
       const body = sanitizeRagSnippet(c.content || c.excerpt || '').slice(0, budget);
       numberedBlocks.push(`${header}\n${body}`);
     }
@@ -402,6 +411,7 @@ function buildMessages({
     systemPrompt =
       'তুমি "DAWAH X AI" — DAWAH X (https://ebrahim-ead.github.io/DAWAH-X/), Quran.com (https://quran.com/) ও HadithBD (https://www.hadithbd.com/) ভিত্তিক ইসলামিক প্রশ্নোত্তর সহকারী।\n' +
       (dhakaNow ? `বর্তমান বাংলাদেশ সময় ও তারিখ (Asia/Dhaka): ${dhakaNow}।\n` : '') +
+      'DAWAH X-এর যাচাইকৃত পরিচিতি: পরিচালনায় ইবরাহীম ঈদ (Ebrahim Ead), ফোন ও WhatsApp: 01783543026 (সকাল ১০টা–রাত ১০টা), বিজ্ঞাপনমুক্ত প্ল্যাটফর্ম; বিভাগসমূহ: আল-কুরআন ও তাফসীর (১১৪ সূরা), আল-হাদীস (২৮ গ্রন্থে ৬১,৯১০ হাদীস), ইসলামিক বই (১০ সংগ্রহে ১০২ খণ্ড তাফসীর ও ইতিহাস), ২৪,২০৭+ ফতোয়া ও প্রবন্ধ এবং ৯,৩৩৩+ ভিডিও।\n' +
       'কঠোর নিয়মাবলি:\n' +
       '১. ব্যবহারকারী সালাম দিলে বা কুশল বিনিময় করলে আন্তরিকভাবে সালামের উত্তর ও কুশল বিনিময় করবে।\n' +
       '২. যদি নিচে "পূর্ববর্তী উত্তরের সূত্র ও প্রেক্ষাপট" দেওয়া থাকে এবং ব্যবহারকারী সেটি সহজ করে বোঝাতে, সংক্ষেপে বলতে বা অনুবাদ করতে বলেন, তবে শুধুমাত্র সেই পূর্ববর্তী উত্তরের তথ্যের ভেতরে থেকেই প্রমিত বাংলায় তা ব্যাখ্যা বা অনুবাদ করবে।\n' +
