@@ -397,23 +397,27 @@ const STOP_WORDS = new Set([
 
 // Direct HadithBD slug table for 1-hop fast Hadith lookup
 const HADITHBD_BOOK_SLUGS = [
-  [/সহীহ\s*বুখার[ীি]|বুখার[ীি]|bukhari/iu, 'bukhari'],
-  [/সহীহ\s*মুসলিম|মুসলিম|muslim/iu, 'muslim'],
-  [/আব[ূু]\s*দা[উঊ]দ|abu\s*dawud|abudawud/iu, 'abu-dawud'],
+  [/সহ[ীি]হ\s*বুখার[ীি]|বুখার[ীি]|bukhari/iu, 'bukhari'],
+  [/সহ[ীি]হ\s*মুসলিম|মুসলিম|muslim/iu, 'muslim'],
+  [/আব[ূু]\s*দা[উঊ]দ|abu\s*dawu?d|abudawud/iu, 'abu-dawud'],
   [/তিরমি[যজ][ীি]|tirmidhi|tirmizi/iu, 'tirmidhi'],
-  [/নাসা[য়ঈ][ীি]?|nasai/iu, 'nasai'],
-  [/ইবন[ুে]\s*মাজাহ|ibn\s*majah/iu, 'ibn-majah'],
+  [/নাসা(?:য়|য়|ঈ)[ীি]?|nasai/iu, 'nasai'],
+  [/ইবন[ুে]?\s*মাজাহ?|ibn\s*majah?/iu, 'ibn-majah'],
   [/মিশকাত|mishkat/iu, 'mishkat'],
-  [/রিয়া[যদ]ুস\s*(?:সালেহ[ীি]ন|স্বা-লিহীন)|riyadus/iu, 'riyadus-salihin'],
+  [/রি(?:য়া|য়া)[যদ]ুস\s*(?:সালেহ[ীি]ন|স্বা-লিহীন)|riyadus/iu, 'riyadus-salihin'],
   [/আদাবুল\s*মুফরাদ|adab\s*al\s*mufrad/iu, 'adab-al-mufrad'],
-  [/বুলুগুল\s*মারাম|bulughul/iu, 'bulughul-maram'],
+  [/বুলুগুল\s*মারাম|bulugh?ul/iu, 'bulughul-maram'],
+  [/ন(?:ব|ও)(?:ব|য়া|য়া)ব?[ীি]র?\s*(?:চল্লিশ|40)\s*হাদ[ীি]স|nawawi/iu, 'nawawi40'],
+  [/হাদ[ীি]সে?\s*কুদস[ীি]|qudsi/iu, 'qudsi40'],
+  [/মু(?:ও|ওয়া|ওয়া)ত্তা|muwatta/iu, 'muwatta-malik'],
+  [/শামা(?:য়|য়)েলে?\s*তিরমি[যজ][ীি]|shamail/iu, 'shamail-muhammadiyah'],
 ];
 
 export function detectDirectHadithReference(question) {
   const asciiQ = toAsciiDigits(normalizeBanglishIslamicTerms(question));
   for (const [re, slug] of HADITHBD_BOOK_SLUGS) {
     const m = asciiQ.match(
-      new RegExp(`${re.source}\\s*(?:এর|তে|হাদীস|হাদিস|নং|নম্বর|হা\\/|#|:|-)?\\s*(\\d{1,5})(?=$|[^0-9])`, 'iu')
+      new RegExp(`(?:${re.source})\\s*(?:এর|তে|হাদীস|হাদিস|নং|নম্বর|তম|ম|য়|য়|হা\\/|#|:|-)*\\s*(\\d{1,5})(?=$|[^0-9])`, 'iu')
     );
     if (m) {
       const num = Number(m[1]);
@@ -473,19 +477,27 @@ export function detectDirectQuranReferences(question) {
   const lowerQ = asciiQ.toLowerCase();
   const refs = [];
 
-  if (/আয়াতুল\s*কুরস[ীি]|আয়াতুল\s*কুরছ[ীি]/iu.test(asciiQ)) {
+  if (/আ(?:য়|য়)াতুল\s*কুরস[ীি]|আ(?:য়|য়)াতুল\s*কুরছ[ীি]/iu.test(asciiQ)) {
     refs.push({ type: 'verse', key: '2:255' });
   }
-  if (/বাকারার?\s*শেষ\s*(?:দুই|২|দুটি)\s*আয়াত/iu.test(asciiQ)) {
+  if (/বাকারার?\s*শেষ\s*(?:দুই|2|দুটি)\s*আ(?:য়|য়)াত/iu.test(asciiQ)) {
     refs.push({ type: 'verse', key: '2:285' });
     refs.push({ type: 'verse', key: '2:286' });
+  }
+  if (/হাশরের?\s*শেষ\s*(?:তিন|3|তিনটি)\s*আ(?:য়|য়)াত/iu.test(asciiQ)) {
+    refs.push({ type: 'verse', key: '59:22' });
+    refs.push({ type: 'verse', key: '59:23' });
+    refs.push({ type: 'verse', key: '59:24' });
+  }
+  if (/কাহ(?:া)?ফের?\s*প্রথম\s*(?:দশ|10)\s*(?:টি\s*)?আ(?:য়|য়)াত/iu.test(asciiQ)) {
+    for (let v = 1; v <= 5; v++) refs.push({ type: 'verse', key: `18:${v}` });
   }
 
   const colonMatches = asciiQ.matchAll(/(?:^|[^\d])(\d{1,3})\s*:\s*(\d{1,3})(?:\s*[-–]\s*(\d{1,3}))?(?=$|[^\d])/g);
   for (const m of colonMatches) {
     const ch = Number(m[1]);
     const vStart = Number(m[2]);
-    const vEnd = m[3] ? Math.min(Number(m[3]), vStart + 3) : vStart;
+    const vEnd = m[3] ? Math.min(Number(m[3]), vStart + 4) : vStart;
     if (ch >= 1 && ch <= 114 && vStart >= 1 && vStart <= 286) {
       for (let v = vStart; v <= vEnd; v++) {
         refs.push({ type: 'verse', key: `${ch}:${v}` });

@@ -190,8 +190,9 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v20_3src';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v22_3src';
   try {
+    localStorage.removeItem('dawahx_ai_cache_v20_3src');
     localStorage.removeItem('dawahx_ai_cache_v19_3src');
     localStorage.removeItem('dawahx_ai_cache_v18_only');
     localStorage.removeItem('dawahx_ai_cache_v17_only');
@@ -275,18 +276,28 @@
   function buildExternalSourcesHtml(extSources) {
     const safeList = (Array.isArray(extSources) ? extSources : []).filter((s) => {
       if (!s || !s.url) return false;
-      return /^https:\/\/(?:www\.)?(?:quran\.com|hadithbd\.com)\//i.test(String(s.url));
+      return /^https:\/\/(?:(?:www\.)?(?:quran\.com|hadithbd\.com)\/|ebrahim-ead\.github\.io\/DAWAH-X\/)/i.test(String(s.url));
     });
     if (safeList.length === 0) return '';
 
     const cards = safeList
       .map((s, idx) => {
-        const isQuran = String(s.source_site || '').toLowerCase().includes('quran');
-        const linkLabel = isQuran ? 'Quran.com ↗' : 'HadithBD ↗';
+        const siteLabel = String(s.source_site || s.provider_name || s.provider || s.url || '');
+        const isDawahX = /dawah/i.test(siteLabel);
+        const isQuran = !isDawahX && /quran/i.test(siteLabel);
+        const linkLabel = isDawahX ? 'DAWAH X ↗' : isQuran ? 'Quran.com ↗' : 'HadithBD ↗';
+        const displaySource = s.source_name || s.badge || s.provider_name || s.source_site || 'Verified Source';
+        const excerptRaw = String(s.excerpt || s.translation_bn || s.bengali || '').trim();
+        const normalizedItem = {
+          ...s,
+          source_site: isDawahX ? 'DAWAH X' : isQuran ? 'Quran.com' : 'HadithBD',
+          source_name: displaySource,
+          excerpt: excerptRaw,
+        };
         const extId = 'ext_' + (++extSourceSeq);
-        extSourceRegistry.set(extId, s);
+        extSourceRegistry.set(extId, normalizedItem);
 
-        const hasFullReader = Boolean((s.full_text && s.full_text.length > 35) || s.excerpt);
+        const hasFullReader = Boolean((s.full_text && s.full_text.length > 35) || excerptRaw);
         const readHereBtn = hasFullReader
           ? `<button type="button" class="src-action-btn" data-read-ext-id="${extId}">📄 এখানেই পড়ুন</button>`
           : '';
@@ -299,17 +310,17 @@
           ? `<button type="button" class="src-action-btn" data-play-quran-audio="${escHtml(validAudio)}">🎧 তিলাওয়াত</button>`
           : '';
 
-        const excerptHtml = s.excerpt
-          ? `<div class="src-submeta" style="margin-top:4px;opacity:0.9;">${escHtml(String(s.excerpt).slice(0, 175))}${String(s.excerpt).length > 175 ? '…' : ''}</div>`
+        const excerptHtml = excerptRaw
+          ? `<div class="src-submeta" style="margin-top:4px;opacity:0.9;">${escHtml(excerptRaw.slice(0, 175))}${excerptRaw.length > 175 ? '…' : ''}</div>`
           : '';
         return `
           <div class="source-ref-card">
             <div class="src-top-row">
               <span class="src-rank-badge">#${toBnNum(idx + 1)}</span>
-              <div class="src-title-text">${escHtml(s.title || s.source_name)}</div>
+              <div class="src-title-text">${escHtml(s.title || displaySource)}</div>
             </div>
             <div class="src-submeta">
-              <span>${escHtml(s.source_name || s.source_site)}</span>
+              <span>${escHtml(displaySource)}</span>
             </div>
             ${excerptHtml}
             <div class="src-btn-row">
@@ -1502,6 +1513,12 @@
     bypassCache = false
   ) {
     if (!targetEl || data.is_deterministic_tool) return;
+    if (data.is_verbatim_card && !bypassCache) {
+      if (answerCard) {
+        answerCard._regenCtx = { question, data, slot: targetEl, historySnapshot };
+      }
+      return;
+    }
 
     if (answerCard && !answerCard._origFallbackHtml) {
       answerCard._origFallbackHtml = targetEl.innerHTML;
@@ -1530,9 +1547,17 @@
 
     const applyExternalMetaToCard = (extList, upgradedGrounded) => {
       if (Array.isArray(extList) && extList.length > 0) {
-        data.external_sources = extList;
+        const merged = [...(Array.isArray(data.external_sources) ? data.external_sources : [])];
+        const seenUrls = new Set(merged.map((x) => x && x.url).filter(Boolean));
+        for (const item of extList) {
+          if (item && item.url && !seenUrls.has(item.url)) {
+            seenUrls.add(item.url);
+            merged.push(item);
+          }
+        }
+        data.external_sources = merged.slice(0, 5);
         if (extSlotEl) {
-          extSlotEl.innerHTML = buildExternalSourcesHtml(extList);
+          extSlotEl.innerHTML = buildExternalSourcesHtml(data.external_sources);
         }
       }
       if (upgradedGrounded) {
@@ -1935,6 +1960,35 @@
           if (s.category && s.category !== s.source_name) metaParts.push(s.category);
           if (s.author) metaParts.push('লেখক: ' + s.author);
           if (s.pub_date) metaParts.push(s.pub_date);
+
+          const isHexArticleKey = /^[0-9a-f]{14}$/i.test(String(s.key || ''));
+          let inlineReadBtn = '';
+          if (isHexArticleKey) {
+            inlineReadBtn = `<button type="button" class="src-action-btn" data-read-key="${escHtml(s.key)}">📄 সম্পূর্ণ লেখা পড়ুন</button>`;
+          } else if (s.full_text && String(s.full_text).length > 30) {
+            const dxInlineId = 'ext_' + (++extSourceSeq);
+            extSourceRegistry.set(dxInlineId, {
+              source_site: 'DAWAH X',
+              source_name: s.source_name || 'DAWAH X',
+              title: s.title || s.clean_title,
+              url: s.dawahx_url,
+              audio_url: s.audio_url || '',
+              excerpt: s.excerpt || '',
+              full_text: s.full_text,
+            });
+            inlineReadBtn = `<button type="button" class="src-action-btn" data-read-ext-id="${dxInlineId}">📄 এখানেই পড়ুন</button>`;
+          }
+
+          const validAudio =
+            s.audio_url && /^https:\/\/verses\.quran\.(?:com|foundation)\//i.test(String(s.audio_url))
+              ? String(s.audio_url)
+              : '';
+          const audioBtn = validAudio
+            ? `<button type="button" class="src-action-btn" data-play-quran-audio="${escHtml(validAudio)}">🎧 তিলাওয়াত</button>`
+            : '';
+
+          const extLabel = s.doc_type === 'book' ? '📖 বইটি পড়ুন ↗' : 'মূল সাইটে দেখুন ↗';
+
           return `
             <div class="source-ref-card">
               <div class="src-top-row">
@@ -1945,11 +1999,10 @@
                 <span>${escHtml(metaParts.join(' · '))}</span>
               </div>
               <div class="src-btn-row">
-                <button type="button" class="src-action-btn" data-read-key="${escHtml(s.key)}">
-                  📄 সম্পূর্ণ লেখা পড়ুন
-                </button>
+                ${inlineReadBtn}
+                ${audioBtn}
                 <a href="${escHtml(s.dawahx_url)}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">
-                  মূল সাইটে দেখুন ↗
+                  ${extLabel}
                 </a>
               </div>
             </div>`;
@@ -2204,8 +2257,10 @@
 
     const brandLbl = readerDrawer.querySelector('.drawer-brand-lbl');
     if (brandLbl) {
-      brandLbl.textContent =
-        String(item.source_site || '').toLowerCase().includes('quran')
+      const siteTag = String(item.source_site || item.url || '').toLowerCase();
+      brandLbl.textContent = siteTag.includes('dawah')
+        ? 'DAWAH X — মূল গ্রন্থ ও দলিল'
+        : siteTag.includes('quran')
           ? 'Quran.com — মূল আয়াত ও তাফসীর'
           : 'HadithBD — মূল হাদীস ও দলিল';
     }
