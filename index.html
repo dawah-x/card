@@ -22,7 +22,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="apple-touch-icon" href="apple-touch-icon.png" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=22.0" />
+  <link rel="stylesheet" href="styles.css?v=23.0" />
 </head>
 <body>
   <div class="app-shell">
@@ -61,6 +61,14 @@
           <button class="filter-btn active" data-filter="all">
             <span>সব উৎস থেকে উত্তর</span>
             <small>সম্পূর্ণ</small>
+          </button>
+          <button class="filter-btn" data-filter="quran">
+            <span>কুরআন ও তাফসীর</span>
+            <small>১১৪ সূরা · ৮টি তাফসীর গ্রন্থ</small>
+          </button>
+          <button class="filter-btn" data-filter="hadith">
+            <span>সহীহ হাদীস</span>
+            <small>২৮টি হাদীস গ্রন্থ · মাসনূন দুআ</small>
           </button>
           <button class="filter-btn" data-filter="fatwa">
             <span>ফতোয়া ও মাসআলা</span>
@@ -281,7 +289,7 @@
   <!-- Toast Notification Pill -->
   <div class="app-toast" id="appToast" role="status" aria-live="polite"></div>
 
-  <script src="browser-ai.js?v=22.0"></script>
-  <script src="app.js?v=22.0"></script>
+  <script src="browser-ai.js?v=23.0" defer></script>
+  <script src="app.js?v=23.0" defer></script>
 </body>
 </html>

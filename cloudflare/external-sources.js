@@ -548,12 +548,13 @@ const QURAN_TRANSLATOR_LABELS = {
   380: 'ফাতহুল মাজীদ',
 };
 
-async function fetchQuranTafsirSnippet(verseKey, fetchImpl = fetch) {
-  // Resource 166: Tafsir Abu Bakr Zakaria (Bengali), fallback 164: Tafsir Ibn Kathir (Bengali)
-  for (const tafsirId of [166, 164]) {
+async function fetchQuranTafsirSnippet(verseKey, fetchImpl = fetch, preferIbnKathir = false) {
+  // Resource 166: Tafsir Abu Bakr Zakaria (Bengali), 164: Tafsir Ibn Kathir (Bengali)
+  const order = preferIbnKathir ? [164, 166] : [166, 164];
+  for (const tafsirId of order) {
     try {
       const url = `https://api.quran.com/api/v4/tafsirs/${tafsirId}/by_ayah/${encodeURIComponent(verseKey)}`;
-      const res = await safeAllowedFetch(url, {}, 2000, fetchImpl);
+      const res = await safeAllowedFetch(url, {}, 2200, fetchImpl);
       if (!res.ok) continue;
       const data = await res.json();
       const rawTxt = data?.tafsir?.text || '';
@@ -561,7 +562,7 @@ async function fetchQuranTafsirSnippet(verseKey, fetchImpl = fetch) {
       if (cleanTxt && cleanTxt.length >= 40) {
         const tafsirName =
           tafsirId === 166 ? 'তাফসীর ড. আবু বকর মুহাম্মাদ যাকারিয়া' : 'তাফসীর ইবন কাসীর (বাংলা)';
-        return { name: tafsirName, text: cleanTxt.slice(0, 1100) };
+        return { name: tafsirName, text: cleanTxt.slice(0, preferIbnKathir ? 1600 : 1100) };
       }
     } catch (_) {}
   }
@@ -626,6 +627,7 @@ export async function fetchQuranComSources(question, fetchImpl = fetch) {
   const results = [];
   const seenKeys = new Set();
   const wantsTafsir = /(?:তাফস[ীি]র|ব্যাখ্যা|শানে\s*নু[যজ][ুূ]ল|ফ[যজ][ীি]লত|শিক্ষা|tafsir|tafseer)/iu.test(question);
+  const preferIbnKathir = /(?:ইবন[েু]?\s*কা[সছ][ীি]র|ibn\s*kathir)/iu.test(question);
 
   try {
     const directRefs = detectDirectQuranReferences(question);
@@ -638,7 +640,7 @@ export async function fetchQuranComSources(question, fetchImpl = fetch) {
             )}?translations=161,213,163&fields=text_uthmani`;
             const [res, tafsirObj] = await Promise.all([
               safeAllowedFetch(apiUrl, {}, 2400, fetchImpl),
-              idx === 0 ? fetchQuranTafsirSnippet(ref.key, fetchImpl) : Promise.resolve(null),
+              idx === 0 ? fetchQuranTafsirSnippet(ref.key, fetchImpl, preferIbnKathir) : Promise.resolve(null),
             ]);
             if (!res.ok) return [];
             const data = await res.json();
@@ -653,7 +655,12 @@ export async function fetchQuranComSources(question, fetchImpl = fetch) {
             return item ? [item] : [];
           } else {
             const apiUrl = `https://api.quran.com/api/v4/verses/by_chapter/${ref.chapter}?translations=161&fields=text_uthmani&per_page=8`;
-            const res = await safeAllowedFetch(apiUrl, {}, 2400, fetchImpl);
+            const [res, chTafsir] = await Promise.all([
+              safeAllowedFetch(apiUrl, {}, 2400, fetchImpl),
+              wantsTafsir || preferIbnKathir
+                ? fetchQuranTafsirSnippet(`${ref.chapter}:1`, fetchImpl, preferIbnKathir)
+                : Promise.resolve(null),
+            ]);
             if (!res.ok) return [];
             const data = await res.json();
             const verses = Array.isArray(data?.verses) ? data.verses : [];
@@ -665,20 +672,21 @@ export async function fetchQuranComSources(question, fetchImpl = fetch) {
             const combinedBn = verses
               .map((v) => `(${toBengaliDigits(v.verse_number)}) ${stripHtmlTags(v.translations?.[0]?.text || '')}`)
               .join(' ');
+            const tafsirAppendix = chTafsir ? `\n\nতাফসীর (${chTafsir.name}):\n${chTafsir.text}` : '';
             const url = `https://quran.com/${ref.chapter}`;
             const audioUrl = buildQuranAudioUrl(ref.chapter, 1);
             return [
               {
                 source_site: 'Quran.com',
-                source_name: 'Quran.com · আল-কুরআন',
+                source_name: chTafsir ? `Quran.com · অনুবাদ ও তাফসীর` : 'Quran.com · আল-কুরআন',
                 title: `আল-কুরআন — সূরা ${surahBn} (আয়াত ১–${toBengaliDigits(verses.length)})`,
                 url,
                 audio_url: audioUrl,
                 verse_key: `${ref.chapter}:1-${verses.length}`,
                 arabic: combinedAr,
                 excerpt: combinedBn.slice(0, 320),
-                full_text: `${combinedAr}\n\nবাংলা অনুবাদ (তাইসীরুল কুরআন):\n${combinedBn}`.slice(0, 2200),
-                content: `সূত্র: সূরা ${surahBn} (${url})\nআরবি: ${combinedAr}\nবাংলা অনুবাদ (তাইসীরুল কুরআন): ${combinedBn}`,
+                full_text: `${combinedAr}\n\nবাংলা অনুবাদ (তাইসীরুল কুরআন):\n${combinedBn}${tafsirAppendix}`.slice(0, 2400),
+                content: `সূত্র: সূরা ${surahBn} (${url})\nআরবি: ${combinedAr}\nবাংলা অনুবাদ (তাইসীরুল কুরআন): ${combinedBn}${tafsirAppendix}`,
                 citation: `সূরা ${surahBn} — Quran.com (${url})`,
               },
             ];

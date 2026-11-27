@@ -1533,10 +1533,11 @@
 
   function augmentQueryWithHistory(question, history) {
     if (!Array.isArray(history) || !history.length) return { query: question, usedHistory: false };
+    const recentTurns = history.slice(-8);
     let lastCtx = null;
-    for (let i = history.length - 1; i >= 0; i--) {
-      if (history[i] && history[i].role === 'assistant' && history[i].primary_title) {
-        lastCtx = history[i];
+    for (let i = recentTurns.length - 1; i >= 0; i--) {
+      if (recentTurns[i] && recentTurns[i].role === 'assistant' && recentTurns[i].primary_title) {
+        lastCtx = recentTurns[i];
         break;
       }
     }
@@ -1544,17 +1545,59 @@
 
     const qExpanded = translateBanglishAndEnglish(question);
     const qCore = [...new Set(tokenizeFolded(qExpanded, true))].filter(isCoreToken);
-    // Strictly augment ONLY when user explicitly uses anaphoric pronouns or continuation markers!
-    // Never pollute standalone short questions ("দাড়ি রাখার হুকুম কী?", "হস্তমৈথুন কি হারাম?", "তারাবীহ নামাজ কত রাকাত?")!
-    const ANAPHORA_FOLLOWUP_RE = /(?:^\s*(?:আর\s+|তাহলে\s+|এক্ষেত্রে\s+|সেক্ষেত্রে\s+|তো\s+|কিন্তু\s+)|(?:(?:^|[\s,।?!;:'"()-])(?:এটা|এটি|ওটা|সেটা|এতে|এটার|এটির|এর\s*(?:হুকুম|বিধান|দলিল|কাফফারা|নিয়ম|নিয়ম|কারণে)|তাহলে\s*কি|সেক্ষেত্রে\s*কি|এক্ষেত্রে\s*কি)(?=$|[\s,।?!;:'"()-])))/iu;
+    // Augment when user uses anaphoric pronouns, personal-situation continuations ("আমার ক্ষেত্রে...", "সফরে থাকলে..."), or follow-up markers!
+    const ANAPHORA_FOLLOWUP_RE =
+      /(?:^\s*(?:আর\s+|তাহলে\s+|এক্ষেত্রে\s+|সেক্ষেত্রে\s+|তো\s+|কিন্তু\s+|যদি\s+)|(?:(?:^|[\s,।?!;:'"()-])(?:এটা|এটি|ওটা|সেটা|এতে|এটার|এটির|আমার\s*ক্ষেত্রে|আমি\s*যদি|সফরে\s*থাকলে|ভুলে\s*গেলে|মহিলাদের?\s*ক্ষেত্রে|বাচ্চাদের?\s*ক্ষেত্রে|দ্বিতীয়\s*বার|আরেকটু|বিস্তারিত|সহজ\s*করে|সংক্ষেপে|এর\s*(?:হুকুম|বিধান|দলিল|কাফফারা|নিয়ম|নিয়ম|কারণে|ব্যাখ্যা|তাফসীর|তাফসির)|তাহলে\s*কি|সেক্ষেত্রে\s*কি|এক্ষেত্রে\s*কি)(?=$|[\s,।?!;:'"()-])))/iu;
     const startsContextual = CHAT_PATTERNS.ellipsisFollowup.test(question) || ANAPHORA_FOLLOWUP_RE.test(question);
-    const EVIDENCE_META_STEMS = new Set(['হাদিস', 'হাদীস', 'হাদীছ', 'কুরআন', 'কোরআন', 'আয়াত', 'সূরা', 'সুরা'].map((w) => stemBn(foldBn(w))));
+    const EVIDENCE_META_STEMS = new Set(
+      ['হাদিস', 'হাদীস', 'হাদীছ', 'কুরআন', 'কোরআন', 'আয়াত', 'সূরা', 'সুরা', 'তাফসীর', 'তাফসির'].map((w) =>
+        stemBn(foldBn(w))
+      )
+    );
     const hasOwnMandatorySubject = qCore
       .filter((st) => !(startsContextual && EVIDENCE_META_STEMS.has(st)))
       .some((st) => MANDATORY_ANCHOR_STEMS.has(st));
 
-    if (startsContextual && !hasOwnMandatorySubject && qCore.length <= 4) {
-      const prevCore = [...new Set(tokenizeFolded(lastCtx.primary_title, true))].filter(isCoreToken).slice(0, 4);
+    if (startsContextual && !hasOwnMandatorySubject && qCore.length <= 7) {
+      // 1. Collect specialized MANDATORY_ANCHOR_STEMS across recent turns first
+      const anchorPool = [];
+      const NARRATIVE_SKIP = new Set([
+        'জনৈক', 'আলেম', 'বল', 'বলেন', 'কেউ', 'অল্প', 'বেসি', 'ভুলে', 'খেয়ে', 'খেলে', 'ফেললে',
+        'থাকলে', 'ক্ষেত্রে', 'ক্সেত্রে', 'আমার', 'করনি', 'ভঙ্গ', 'কারন', 'কারণ', 'নিয়ম', 'বিধান', 'হুকুম', 'কিভাবে', 'উপায়',
+      ]);
+      for (let i = recentTurns.length - 1; i >= 0 && anchorPool.length < 3; i--) {
+        const item = recentTurns[i];
+        if (!item) continue;
+        const srcTxt = item.role === 'user' ? item.text : item.primary_title || '';
+        if (!srcTxt) continue;
+        for (const st of tokenizeFolded(translateBanglishAndEnglish(srcTxt), true)) {
+          if (MANDATORY_ANCHOR_STEMS.has(st) && !EVIDENCE_META_STEMS.has(st) && !anchorPool.includes(st)) {
+            anchorPool.push(st);
+            if (anchorPool.length >= 3) break;
+          }
+        }
+      }
+      // 2. Also include root topic core stems from the earliest user turn in the active conversation window (e.g. "রোযা", "সালাত", "যাকাত")
+      if (anchorPool.length < 2) {
+        const userTurns = recentTurns.filter((it) => it && it.role === 'user' && it.text);
+        for (const ut of userTurns) {
+          for (const st of tokenizeFolded(translateBanglishAndEnglish(ut.text), true)) {
+            if (isCoreToken(st) && !EVIDENCE_META_STEMS.has(st) && !NARRATIVE_SKIP.has(st) && !anchorPool.includes(st)) {
+              anchorPool.push(st);
+              if (anchorPool.length >= 3) break;
+            }
+          }
+          if (anchorPool.length >= 2) break;
+        }
+      }
+      // 3. Final fallback to last assistant headline
+      if (!anchorPool.length) {
+        for (const st of tokenizeFolded(lastCtx.primary_title, true)) {
+          if (isCoreToken(st) && !NARRATIVE_SKIP.has(st) && !anchorPool.includes(st)) anchorPool.push(st);
+          if (anchorPool.length >= 3) break;
+        }
+      }
+      const prevCore = anchorPool.slice(0, 3);
       if (prevCore.length) {
         return { query: `${question} ${prevCore.join(' ')}`, usedHistory: true };
       }
@@ -2091,26 +2134,334 @@
     return p;
   }
 
+  // =========================================================================
+  // v23.0 Deep 102-Volume Book Search (Surah-to-Tafsir Volume + History/Seerah/Fitan Chapters)
+  // =========================================================================
+  function resolveTafsirBookVolume(collectionId, suraNum, ayahNum = 1) {
+    const s = Math.max(1, Math.min(114, Number(suraNum) || 1));
+    const a = Math.max(1, Number(ayahNum) || 1);
+
+    if (collectionId === 'ibnkathir') {
+      if (s === 1 || (s === 2 && a <= 141)) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-1-pdf', volBn: '১ম খণ্ড (ইসলামিক ফাউন্ডেশন)' };
+      if (s === 2 && a <= 252) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-2-pdf', volBn: '২য় খণ্ড (ইসলামিক ফাউন্ডেশন)' };
+      if (s === 2 || s === 3) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-3-pdf', volBn: '৩য় খণ্ড (ইসলামিক ফাউন্ডেশন)' };
+      if (s === 4) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-4-pdf', volBn: '৪র্থ খণ্ড' };
+      if (s === 5) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-5-pdf', volBn: '৫ম খণ্ড' };
+      if (s === 6) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-6-pdf', volBn: '৬ষ্ঠ খণ্ড' };
+      if (s <= 8) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-7-pdf', volBn: '৭ম খণ্ড' };
+      if (s === 9) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-8-pdf', volBn: '৮ম খণ্ড' };
+      if (s <= 11) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-9-pdf', volBn: '৯ম খণ্ড' };
+      if (s <= 14) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-10-pdf', volBn: '১০ম খণ্ড' };
+      if (s <= 16) return { itemId: 'tafsir-ibn-kathir-islamic-foundation-11-pdf', volBn: '১১তম খণ্ড' };
+      if (s === 17) return { itemId: 'tafsir-ibn-kathir-12-pdf', volBn: '১২তম খণ্ড' };
+      if (s <= 20) return { itemId: 'tafsir-ibn-kathir-13-pdf', volBn: '১৩তম খণ্ড' };
+      if (s <= 27) return { itemId: 'tafsir-ibn-kathir-14-pdf', volBn: '১৪তম খণ্ড' };
+      if (s <= 36) return { itemId: 'tafsir-ibn-kathir-15-pdf', volBn: '১৫তম খণ্ড' };
+      if (s <= 49) return { itemId: 'tafsir-ibn-kathir-16-pdf', volBn: '১৬তম খণ্ড' };
+      if (s <= 66) return { itemId: 'tafsir-ibn-kathir-17-pdf', volBn: '১৭তম খণ্ড' };
+      return { itemId: 'tafsir-ibn-kathir-18-pdf', volBn: '১৮তম খণ্ড' };
+    }
+
+    if (collectionId === 'maarif') {
+      const v = s <= 2 ? 1 : s <= 4 ? 2 : s <= 7 ? 3 : s <= 12 ? 4 : s <= 19 ? 5 : s <= 29 ? 6 : s <= 46 ? 7 : 8;
+      return { itemId: `tafsir-maariful-quran-${v}-pdf`, volBn: `${toBnDigitsStr(v)}ম খণ্ড` };
+    }
+
+    if (collectionId === 'zilal') {
+      const v = s >= 78 ? 22 : s >= 67 ? 21 : Math.max(1, Math.min(20, Math.ceil((s / 66) * 20)));
+      return { itemId: `tafsir-fi-zilalil-quran-${v}-pdf`, volBn: `${toBnDigitsStr(v)}তম খণ্ড` };
+    }
+
+    if (collectionId === 'jalalain') {
+      const v = s >= 67 ? 7 : Math.max(1, Math.min(6, Math.ceil((s / 66) * 6)));
+      return { itemId: `tafsir-jalalain-${v}-pdf`, volBn: `${toBnDigitsStr(v)}ম খণ্ড` };
+    }
+
+    if (collectionId === 'tabari') {
+      if (s >= 78) return { itemId: 'tafsir-tabari-last-part-pdf', volBn: 'শেষ খণ্ড (আমপারা)' };
+      const v = Math.max(1, Math.min(9, Math.ceil((s / 77) * 9)));
+      return { itemId: `tafsir-tabari-${v}-pdf`, volBn: `${toBnDigitsStr(v)}ম খণ্ড` };
+    }
+
+    if (collectionId === 'mazhari') {
+      const v = s >= 78 ? 12 : Math.max(1, Math.min(11, Math.ceil((s / 77) * 11)));
+      return { itemId: `tafsir-mazhari-${v}-pdf`, volBn: `${toBnDigitsStr(v)}তম খণ্ড` };
+    }
+
+    if (collectionId === 'tawjih') {
+      const v = s <= 9 ? 1 : s <= 29 ? 2 : 3;
+      return { itemId: `tafsir-tawjihul-quran-${v}-pdf`, volBn: `${toBnDigitsStr(v)}য় খণ্ড` };
+    }
+
+    if (collectionId === 'usmani') {
+      if (s >= 67) return { itemId: 'tafsir-usmani-7-pdf', volBn: '৭ম খণ্ড' };
+      if (s >= 5) return { itemId: 'tafsir-usmani-2-pdf', volBn: '২য় খণ্ড' };
+      return { itemId: 'tafsir-usmani-1-pdf', volBn: '১ম খণ্ড' };
+    }
+
+    return null;
+  }
+
+  const DEEP_HISTORY_BOOK_CHAPTERS = [
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-1-pdf',
+      volBn: '১ম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'সৃষ্টির সূচনা, আরশ-কুরসী, ফেরেশতা, জিন ও হযরত আদম (আ.) থেকে ইবরাহীম (আ.)-এর ইতিহাস',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ১ম খণ্ডে আরশ, কুরসী, লওহ-কলম, আসমান-যমীন, ফেরেশতা ও জিন জাতির সৃষ্টি এবং হযরত আদম (আ.), শীস (আ.), ইদরীস (আ.), নূহ (আ.)-এর মহাপ্লাবন, হূদ (আ.), সালেহ (আ.), ইবরাহীম (আ.), ইসমাঈল (আ.) ও লূত (আ.)-এর দলিলভিত্তিক ইতিহাস বিস্তারিত বর্ণিত হয়েছে।',
+      re: /(?:সৃষ্টির?\s*সূচনা|হ[যজ]রত\s*আদম|ন[ূু]হ\s*\(আ|মহাপ্লাবন|কওমে?\s*(?:আদ|সামূদ|লূত)|ইবরাহ[ীি]ম\s*\(আ.*ইতিহাস|ফেরেশতা\s*ও\s*জিন.*সৃষ্টি)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-2-pdf',
+      volBn: '২য় খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'হযরত ইউসুফ, আইয়ুব, মূসা, দাউদ, সুলাইমান ও ঈসা (আ.) এবং বনী ইসরাঈলের ইতিহাস',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ২য় খণ্ডে হযরত ইউসুফ (আ.), আইয়ুব (আ.), শোয়াইব (আ.), মূসা ও হারূন (আ.), ফিরআউন ডুবে যাওয়ার ঘটনা, দাউদ ও সুলাইমান (আ.), ইউনুস (আ.), যাকারিয়া ও ইয়াহইয়া (আ.), ঈসা (আ.) এবং আসহাবে কাহফ ও আসহাবুল উখদুদের ইতিহাস সহীহ বর্ণনাসহ সংকলিত হয়েছে।',
+      re: /(?:হ[যজ]রত\s*(?:ইউসুফ|আইয়ুব|ম[ূু]সা|সুলাইমান|দাউদ|ঈসা)\s*\(আ.*(?:ইতিহাস|ঘটনা|জীবনী)|ফিরআউন.*ঘটনা|আসহাবে?\s*কাহ(?:া)?ফ.*ঘটনা)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-3-pdf',
+      volBn: '৩য় খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'সীরাতুন্নবী ﷺ: জাহেলী যুগ, রাসূল ﷺ-এর জন্ম, নবুওয়াত, মক্কী জীবন, মিরাজ ও মদীনায় হিজরত',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৩য় খণ্ডে জাহেলী আরবের অবস্থা, রাসূলুল্লাহ ﷺ-এর পবিত্র জন্ম ও বংশপরিচয়, হিলফুল ফুযূল, গারে হেরায় প্রথম ওহী, মক্কার ১৩ বছরের দাওয়াত, হাবশায় হিজরত, তায়েফ গমন, ইসরা ও মিরাজ, আকাবার শপথ এবং মদীনায় হিজরতের পূর্ণাঙ্গ সীরাত আলোচিত হয়েছে।',
+      re: /(?:স[ীি]রাতুন্নব[ীি]|নব[ীি]জ[ীি]র?\s*(?:জীবন[ীি]|জন্ম\s*ও\s*শৈশব)|হিলফুল\s*ফু[যজ][ূু]ল|হাবশা(?:য়|য়)\s*হিজরত|মদ[ীি]না(?:য়|য়)\s*হিজরত|আকাবার?\s*শপথ)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-4-pdf',
+      volBn: '৪র্থ খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'মাদানী সীরাত ও গাযওয়াত: বদর, উহুদ, খন্দক, হুদায়বিয়া, খায়বার, মুতা, মক্কা বিজয় ও তাবুক যুদ্ধ',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৪র্থ খণ্ডে রাসূলুল্লাহ ﷺ-এর মাদানী জীবনের প্রধান যুদ্ধ ও সন্ধিসমূহ—ঐতিহাসিক বদর যুদ্ধ (২ হিজরি), উহুদ যুদ্ধ (৩ হিজরি), খন্দক/আহযাব যুদ্ধ (৫ হিজরি), হুদায়বিয়ার সন্ধি (৬ হিজরি), খায়বার ও মুতা অভিযান, মক্কা বিজয় ও হুনাইন (৮ হিজরি) এবং তাবুক অভিযান (৯ হিজরি)—সনদসহ বিস্তারিত বর্ণিত হয়েছে।',
+      re: /(?:বদর(?:ের)?\s*যুদ্ধ|উহুদ(?:ের)?\s*যুদ্ধ|খন্দক(?:ের)?\s*যুদ্ধ|আহযাব(?:ের)?\s*যুদ্ধ|হুদা(?:য়|য়)বি(?:য়|য়)ার?\s*সন্ধি|খায়বার\s*যুদ্ধ|মুতার?\s*যুদ্ধ|মক্কা\s*বিজ(?:য়|য়)|হুনাইন(?:ের)?\s*যুদ্ধ|তাবুক\s*(?:যুদ্ধ|অভিযান))/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-5-pdf',
+      volBn: '৫ম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'বিদায় হজ্জের ভাষণ, রাসূলুল্লাহ ﷺ-এর ওফাত, শামায়েল ও নবুওয়াতের মুজিযাসমূহ',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৫ম খণ্ডে প্রতিনিধি দলের আগমন, ঐতিহাসিক বিদায় হজ্জ ও আরাফার ভাষণ, রাসূলুল্লাহ ﷺ-এর অসুস্থতা ও ওফাত এবং তাঁর সুমহান চারিত্রিক বৈশিষ্ট্য (শামায়েল) ও নবুওয়াতের প্রমাণাদি (দালাইলুন নুবুওয়্যাহ) আলোচিত হয়েছে।',
+      re: /(?:বিদা(?:য়|য়)\s*হজ্জ(?:ের)?\s*ভাষণ|নব[ীি]জ[ীি]র?\s*ওফাত|রাসূল.*ওফাত|দালাইলুন\s*নুবু)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-6-pdf',
+      volBn: '৬ষ্ঠ খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'খুলাফায়ে রাশেদীন: হযরত আবূ বকর সিদ্দীক (রা.) ও হযরত উমর ফারূক (রা.)-এর খিলাফত',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৬ষ্ঠ খণ্ডে সাকীফায়ে বনী সাঈদা, হযরত আবূ বকর (রা.)-এর খিলাফত, ভণ্ড নবীদের দমন ও রিদ্দার যুদ্ধ, ইয়ামামার যুদ্ধ, হযরত উমর ইবনুল খাত্তাব (রা.)-এর খিলাফত, ইয়ারমুক ও কাদিসিয়ার যুদ্ধ এবং জেরুজালেম (বায়তুল মুকাদ্দাস) ও পারস্য বিজয়ের ইতিহাস বর্ণিত হয়েছে।',
+      re: /(?:খুলাফা(?:য়|য়)ে?\s*রাশেদ[ীি]ন|আব[ূু]\s*বকর.*খিলাফত|উমর.*খিলাফত|রিদ্দার?\s*যুদ্ধ|ই(?:য়|য়)ারমুক(?:ের)?\s*যুদ্ধ|কাদিসি(?:য়|য়)ার?\s*যুদ্ধ)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-7-pdf',
+      volBn: '৭ম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'হযরত উসমান (রা.), হযরত আলী (রা.) ও হযরত হাসান (রা.)-এর খিলাফত, উষ্ট্র ও সিফফীন যুদ্ধ',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৭ম খণ্ডে হযরত উসমান ইবনু আফফান (রা.)-এর খিলাফত, কুরআন সংকলন ও তাঁর শাহাদাত, হযরত আলী (রা.)-এর খিলাফত, জামাল (উষ্ট্র) ও সিফফীনের যুদ্ধ, খারেজীদের উদ্ভব ও নাহরাওয়ান যুদ্ধ এবং হযরত হাসান (রা.)-এর সন্ধি ও খিলাফতের ইতিহাস দলিলসহ আলোচিত হয়েছে।',
+      re: /(?:উসমান.*(?:খিলাফত|শাহাদাত)|আল[ীি].*খিলাফত|সিফফ[ীি]ন(?:ের)?\s*যুদ্ধ|জামাল.*যুদ্ধ|উষ্ট্রের?\s*যুদ্ধ|নাহরাওয়ান)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-8-pdf',
+      volBn: '৮ম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'হযরত মুআবিয়া (রা.)-এর শাসনামল এবং হযরত হুসাইন (রা.) ও কারবালার প্রামাণ্য ইতিহাস',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৮ম খণ্ডে হযরত মুআবিয়া (রা.)-এর শাসনকাল, ৬১ হিজরিতে কুফাবাসীর পত্র, কারবালার প্রান্তরে নবীদৌহিত্র হযরত হুসাইন ইবনু আলী (রা.)-এর মর্মান্তিক শাহাদাতের বিশুদ্ধ ও যাচাইকৃত বর্ণনা এবং জাল বর্ণনাসমূহের পর্যালোচনা সংকলিত হয়েছে।',
+      re: /(?:কারবালা(?:র)?\s*(?:ইতিহাস|ঘটনা|যুদ্ধ|প্রান্তর)|হুসাইন\s*\(রা.*শাহাদাত|মুআবি(?:য়|য়)া.*শাসন)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-9-pdf',
+      volBn: '৯ম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'উমাইয়া খিলাফত, খলীফা উমর ইবনু আবদুল আযীয (রহ.) ও স্পেন (আন্দালুস) বিজয়',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ৯ম খণ্ডে আবদুল মালিক ইবনু মারওয়ান, ওয়ালীদ ইবনু আবদুল মালিকের আমলে তারিক বিন যিয়াদ ও মূসা বিন নুসাইর কর্তৃক স্পেন (আন্দালুস) ও সিন্ধু বিজয় এবং ন্যায়পরায়ণ খলীফা উমর ইবনু আবদুল আযীয (রহ.)-এর সংস্কারমূলক শাসনকাল বর্ণিত হয়েছে।',
+      re: /(?:উমর\s*ইবন[েু]?\s*আবদুল\s*আ[যজ][ীি][যজ]|উমাই(?:য়|য়)া\s*খিলাফত|তারিক\s*বিন\s*[যজ]ি(?:য়|য়)াদ|স্পেন\s*বিজ(?:য়|য়)|আন্দালুস)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-12-pdf',
+      volBn: '১২তম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'আব্বাসীয় যুগ, ক্রুসেড যুদ্ধ ও সুলতান সালাহউদ্দীন আইয়ুবীর বায়তুল মুকাদ্দাস বিজয়',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ১০ম–১২তম খণ্ডে আব্বাসীয় খিলাফত, জ্ঞান-বিজ্ঞানের বিকাশ, ক্রুসেড যুদ্ধ এবং সুলতান সালাহউদ্দীন আইয়ুবী (রহ.) কর্তৃক হিত্তীনের যুদ্ধ ও জেরুজালেম (বায়তুল মুকাদ্দাস) পুনরুদ্ধারের ইতিহাস লিপিবদ্ধ হয়েছে।',
+      re: /(?:সালাহ\s*উদ্দ[ীি]ন\s*আইয়ুব[ীি]|হিত্ত[ীি]ন(?:ের)?\s*যুদ্ধ|ক্রুসেড\s*যুদ্ধ|আব্বাস[ীি](?:য়|য়)\s*খিলাফত)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-13-pdf',
+      volBn: '১৩তম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'তাতারী (মঙ্গোল) আক্রমণ, বাগদাদের পতন (৬৫৬ হিজরি) ও আইন জালুত যুদ্ধ',
+      summary: 'আল-বিদায়া ওয়ান নিহায়া ১৩তম খণ্ডে তাতারী/মঙ্গোলদের উত্থান, ৬৫৬ হিজরিতে হালাকু খানের বাগদাদ আক্রমণ, আইন জালুতের ঐতিহাসিক বিজয় এবং মামলুক সালতানাতের ইতিহাস বিস্তারিত বর্ণিত হয়েছে।',
+      re: /(?:তাতার[ীি]\s*আক্রমণ|মঙ্গোল\s*আক্রমণ|হালাকু\s*খান|বাগদাদ(?:ের)?\s*পতন|আইন\s*জালুত)/iu,
+    },
+    {
+      bookId: 'bidaya',
+      itemId: 'al-bidaya-wan-nihaya-14-pdf',
+      volBn: '১৪তম খণ্ড',
+      bookName: 'আল-বিদায়া ওয়ান নিহায়া',
+      author: 'ইমাম ইবনু কাসীর (রহ.)',
+      topicTitle: 'আল-ফিতান ওয়াল মালাহিম (আন-নিহায়া): কিয়ামতের আলামত, ইমাম মাহদী, দাজ্জাল, ঈসা (আ.), ইয়াজুজ-মাজুজ, হাশর, জান্নাত ও জাহান্নাম',
+      summary: 'আল-বিদায়া ওয়ান নিহায়ার ১৪তম (সমাপনী) খণ্ড "আন-নিহায়া ফিল ফিতান ওয়াল মালাহিম"-এ কিয়ামতের ছোট ও বড় আলামত, ইমাম মাহদীর আবির্ভাব, মসীহ দাজ্জালের ফিতনা, ঈসা ইবনু মারইয়াম (আ.)-এর অবতরণ, ইয়াজুজ-মাজুজ, সূর্য পশ্চিম দিক থেকে উদিত হওয়া, শিঙ্গায় ফুৎকার, হাশর, মীযান, পুলসিরাত এবং জান্নাত ও জাহান্নামের বিবরণ সহীহ হাদীসের আলোকে সংকলিত হয়েছে।',
+      re: /(?:ইমাম\s*মাহদ[ীি]|দাজ্জাল(?:ের)?\s*(?:ফিতনা|আবির্ভাব|বর্ণনা)|ই(?:য়|য়)াজুজ[\s\-]*মাজুজ|কি(?:য়|য়)ামতের?\s*(?:বড়\s*)?আলামত|ফিতান\s*ওয়াল\s*মালাহিম)/iu,
+    },
+    {
+      bookId: 'ahmad',
+      itemId: 'musnad-ahmad-1-pdf',
+      volBn: '১ম ও ২য় খণ্ড',
+      bookName: 'মুসনাদে আহমদ',
+      author: 'ইমাম আহমাদ ইবনু হাম্বল (রহ.)',
+      topicTitle: 'আশারায়ে মুবাশশারা ও সাহাবায়ে কিরামের মুসনাদ হাদীস সংকলন',
+      summary: 'মুসনাদে আহমদ ১ম ও ২য় খণ্ডে জান্নাতের সুসংবাদপ্রাপ্ত দশজন সাহাবী (আবূ বকর, উমর, উসমান, আলী রা. প্রমুখ) ও আহলুল বাইতের সাহাবীগণের সূত্রে বর্ণিত সহীহ ও হাসান হাদীসসমূহ সংকলিত রয়েছে।',
+      re: /(?:আশারা(?:য়|য়)ে?\s*মুবাশশারা.*হাদ[ীি]স|মুসনাদ[ে]?\s*আহম.*হাদ[ীি]স)/iu,
+    },
+  ];
+
+  function resolveDeepBookEnrichment(question) {
+    const q = String(question || '').trim();
+    const pageMatch = q.match(
+      /(?:([০-৯0-9]{1,4})\s*(?:নং\s*)?(?:পৃষ্ঠা|পাতা|page))|(?:(?:পৃষ্ঠা|পাতা|page)\s*([০-৯0-9]{1,4}))/iu
+    );
+    const reqPage = pageMatch ? parseBnOrAsciiInt(pageMatch[1] || pageMatch[2]) : 0;
+
+    // 1. Check if question mentions a Surah / Ayah + a specific Tafsir book (or general Tafsir request)
+    const matchedBookMeta = ISLAMIC_BOOK_COLLECTIONS_META.find((b) => b.re.test(q));
+    const surahRow = findSurahAfterKeyword(q);
+    const colonMatch = q.match(/(?:^|[^\d০-৯])([০-৯0-9]{1,3})\s*[:：]\s*([০-৯0-9]{1,3})(?![\d০-৯])/u);
+    const detectedSurahNum = surahRow ? surahRow[0] : colonMatch ? parseBnOrAsciiInt(colonMatch[1]) : /আ(?:য়|য়)াতুল\s*কুরস[ীি]/iu.test(q) ? 2 : 0;
+    const detectedAyahNum = colonMatch ? parseBnOrAsciiInt(colonMatch[2]) : /আ(?:য়|য়)াতুল\s*কুরস[ীি]/iu.test(q) ? 255 : 1;
+
+    if (detectedSurahNum >= 1 && detectedSurahNum <= 114) {
+      const targetBook =
+        matchedBookMeta && matchedBookMeta.id !== 'bidaya' && matchedBookMeta.id !== 'ahmad'
+          ? matchedBookMeta
+          : /(?:তাফস[ীি]র|শানে\s*নু[যজ][ুূ]ল)/iu.test(q)
+            ? ISLAMIC_BOOK_COLLECTIONS_META.find((b) => b.id === 'ibnkathir')
+            : null;
+
+      if (targetBook) {
+        const volInfo = resolveTafsirBookVolume(targetBook.id, detectedSurahNum, detectedAyahNum);
+        if (volInfo) {
+          const sName = SURAH_114_TABLE[detectedSurahNum - 1][1];
+          const readUrl = `${SITE_URL}/islamic-book-read.html?book=${encodeURIComponent(volInfo.itemId)}${reqPage > 0 ? `&page=${reqPage}` : ''}`;
+          const title = `${targetBook.name} (${volInfo.volBn}) — সূরা ${sName}-এর তাফসীর`;
+          const summary = `DAWAH X ইসলামিক বই গ্রন্থাগারে "${targetBook.name}" (${targetBook.author})-এর ${volInfo.volBn}-এ সূরা ${sName}-এর বিস্তারিত তাফসীর ও শানে নুযূল রয়েছে।`;
+          return {
+            sourceCard: {
+              rank: 2,
+              key: `deepbook_${volInfo.itemId}`,
+              title,
+              clean_title: title,
+              source_code: 'dx_books',
+              source_name: `DAWAH X ইসলামিক বই · ${targetBook.name}`,
+              category: volInfo.volBn,
+              doc_type: 'book',
+              author: targetBook.author,
+              dawahx_url: readUrl,
+              share_url: readUrl,
+              confidence: 0.97,
+              excerpt: summary,
+              full_text: `${title}\nলেখক: ${targetBook.author}\n\n${summary}\n\nসরাসরি পড়ার লিংক: ${readUrl}`,
+            },
+            ragEntry: {
+              title,
+              citation: `[DAWAH X বই] ${title} (${readUrl})`,
+              source: `DAWAH X ইসলামিক বই · ${targetBook.name}`,
+              content: `${summary}\nসরাসরি অনলাইনে পড়ার ঠিকানা: ${readUrl}`,
+            },
+            directFallbackHeadline: title,
+            directFallbackAnswer: `**${targetBook.name}** (${targetBook.author})-এর **${volInfo.volBn}**-এ **সূরা ${sName}**-এর বিস্তারিত তাফসীর সন্নিবেশিত রয়েছে। নিচে আয়াতের অনুবাদ, সংক্ষিপ্ত তাফসীর ও সরাসরি খণ্ডটি খুলে পড়ার লিংক দেওয়া হলো।`,
+          };
+        }
+      }
+    }
+
+    // 2. Check Deep History / Seerah / Khilafat / End-Times Book Chapters (Al-Bidaya wan-Nihaya 1..14 & Musnad Ahmad 1..2)
+    for (const ch of DEEP_HISTORY_BOOK_CHAPTERS) {
+      if (ch.re.test(q) || (matchedBookMeta && matchedBookMeta.id === 'bidaya' && q.includes(ch.volBn.split(' ')[0]))) {
+        const readUrl = `${SITE_URL}/islamic-book-read.html?book=${encodeURIComponent(ch.itemId)}${reqPage > 0 ? `&page=${reqPage}` : ''}`;
+        const title = `${ch.bookName} (${ch.volBn}) — ${ch.topicTitle}`;
+        return {
+          sourceCard: {
+            rank: 2,
+            key: `deepbook_${ch.itemId}`,
+            title,
+            clean_title: title,
+            source_code: 'dx_books',
+            source_name: `DAWAH X ইসলামিক বই · ${ch.bookName}`,
+            category: ch.volBn,
+            doc_type: 'book',
+            author: ch.author,
+            dawahx_url: readUrl,
+            share_url: readUrl,
+            confidence: 0.96,
+            excerpt: ch.summary,
+            full_text: `${title}\nলেখক: ${ch.author}\n\n${ch.summary}\n\nসরাসরি বইটি পড়ার লিংক: ${readUrl}`,
+          },
+          ragEntry: {
+            title,
+            citation: `[DAWAH X বই] ${title} (${readUrl})`,
+            source: `DAWAH X ইসলামিক বই · ${ch.bookName}`,
+            content: `${ch.summary}\nসরাসরি খণ্ডটি পড়ার লিংক: ${readUrl}`,
+          },
+          directFallbackHeadline: title,
+          directFallbackAnswer: ch.summary,
+        };
+      }
+    }
+
+    return null;
+  }
+
   async function resolveDawahXSiteAndBooks(question, engine, t0) {
     const q = String(question || '').trim();
     const mentionsDawahX = /(?:dawah\s*[-_]?x|দাওয়াহ?\s*এক্স|(?:এই|আপনাদের|তোমাদের)\s*(?:ওয়েবসাইট|সাইট|প্ল্যাটফর্ম))/iu.test(q);
-    const asksBookAction = /(?:বই|কিতাব|গ্রন্থ|খণ্ড|খন্ড|পিডিএফ|pdf|পড়ব|পড়া\s*যাবে|কোথায়\s*পাব|ডাউনলোড|আছে\s*কি|কয়\s*খণ্ড|কয়টি\s*খণ্ড|লাইব্রেরি|গ্রন্থাগার|সংগ্রহ)/iu.test(q);
+    const asksBookAction = /(?:বইটি|বইটা|কিতাবটি|গ্রন্থটি|খণ্ড|খন্ড|পিডিএফ|pdf|পড়ব|পড়তে\s*চাই|পড়া\s*যাবে|কোথায়\s*পাব|পাওয়া\s*যাবে|ডাউনলোড|আছে\s*কি|কয়\s*খণ্ড|কয়টি\s*খণ্ড|লাইব্রেরি|গ্রন্থাগার|পৃষ্ঠা|পাতা)/iu.test(q);
+    const hasSubstantiveTopicInsideBook =
+      Boolean(findSurahAfterKeyword(q)) ||
+      /(?:আ(?:য়|য়)াতুল\s*কুরস[ীি]|[০-৯0-9]{1,3}\s*[:：]\s*[০-৯0-9]{1,3}|অনুযায়[ীি]|মতে|ব্যাখ্যা|যুদ্ধ|কারবালা|খিলাফত|মাহদ[ীি]|দাজ্জাল|সীরাত|ইতিহাস)/iu.test(q);
 
-    // 1. Specific Islamic Book Collection query (e.g., "আল বিদায়া ওয়ান নিহায়া বইটি কোথায় পড়তে পারব?")
+    // 1. Specific Islamic Book Collection catalog / reader query (e.g., "আল বিদায়া ওয়ান নিহায়া ৩য় খণ্ড ৫০ পৃষ্ঠা পড়তে চাই")
     const matchedBookMeta = ISLAMIC_BOOK_COLLECTIONS_META.find((b) => b.re.test(q));
-    if (matchedBookMeta && (asksBookAction || mentionsDawahX || q.length <= 52)) {
+    if (
+      matchedBookMeta &&
+      ((asksBookAction && !/অনুযায়[ীি]|ব্যাখ্যা\s*বলো/iu.test(q)) ||
+        (!hasSubstantiveTopicInsideBook && (mentionsDawahX || q.length <= 52)))
+    ) {
       const catalog = await getIslamicBooksCatalog();
       const liveGroup = Array.isArray(catalog) ? catalog.find((g) => g.id === matchedBookMeta.id) : null;
       const items = (liveGroup && Array.isArray(liveGroup.items)) ? liveGroup.items : [];
       const volCount = items.length || matchedBookMeta.volumes;
       const collectionUrl = `${SITE_URL}/islamic-book-collection.html?collection=${encodeURIComponent(matchedBookMeta.id)}`;
 
-      // Check if user requested a specific volume number (e.g. "৩য় খণ্ড" / "vol 2")
+      // Check if user requested a specific volume number ("৩য় খণ্ড") AND/OR page number ("৫০ পৃষ্ঠা")
       const volMatch = q.match(/([০-৯0-9]{1,2})\s*(?:ম|য়|য়|র্থ|ষ্ঠ|তম|\s*নং)?\s*(?:খণ্ড|খন্ড|ভলিউম|part|vol)/iu);
+      const pageMatch = q.match(
+        /(?:([০-৯0-9]{1,4})\s*(?:নং\s*|তম\s*)?(?:পৃষ্ঠা|পাতা|page))|(?:(?:পৃষ্ঠা|পাতা|page)\s*([০-৯0-9]{1,4}))/iu
+      );
       const reqVol = volMatch ? parseBnOrAsciiInt(volMatch[1]) : NaN;
+      const reqPage = pageMatch ? parseBnOrAsciiInt(pageMatch[1] || pageMatch[2]) : 0;
       const targetItem = (!isNaN(reqVol) && reqVol >= 1 && reqVol <= items.length) ? items[reqVol - 1] : items[0];
       const firstReadUrl = targetItem
-        ? `${SITE_URL}/islamic-book-read.html?book=${encodeURIComponent(targetItem.id)}`
+        ? `${SITE_URL}/islamic-book-read.html?book=${encodeURIComponent(targetItem.id)}${reqPage > 0 ? `&page=${reqPage}` : ''}`
         : collectionUrl;
 
       const volListText = items.length
@@ -2138,21 +2489,29 @@
         },
       ];
       if (targetItem) {
-        srcCards.push({
-          rank: 2,
+        const itemLabel =
+          targetItem.name.replace(/\s*pdf\s*$/i, '') + (reqPage > 0 ? ` · পৃষ্ঠা ${toBnDigitsStr(reqPage)}` : '');
+        const itemCard = {
+          rank: !isNaN(reqVol) || reqPage > 0 ? 1 : 2,
           key: `book_item_${targetItem.id}`,
-          title: targetItem.name.replace(/\s*pdf\s*$/i, ''),
-          clean_title: targetItem.name.replace(/\s*pdf\s*$/i, ''),
+          title: itemLabel,
+          clean_title: itemLabel,
           source_code: 'dx_books',
           source_name: 'DAWAH X বুক রিডার',
           category: 'সরাসরি পাঠযোগ্য খণ্ড',
           doc_type: 'book',
           dawahx_url: firstReadUrl,
           share_url: firstReadUrl,
-          confidence: 0.98,
+          confidence: 0.99,
           excerpt: `${matchedBookMeta.name}-এর এই খণ্ডটি DAWAH X-এর ইন্টারেক্টিভ বুক রিডারে সরাসরি পড়ুন।`,
           full_text: fullReaderBody,
-        });
+        };
+        if (!isNaN(reqVol) || reqPage > 0) {
+          srcCards[0].rank = 2;
+          srcCards.unshift(itemCard);
+        } else {
+          srcCards.push(itemCard);
+        }
       }
 
       const ragCtx = [
@@ -2702,6 +3061,9 @@
     return p;
   }
 
+  // Built-in Offline Essential Surahs & Ayatul Kursi (verbatim from DAWAH X scripture) for 0ms offline access
+  const OFFLINE_ESSENTIAL_QURAN = {"1":{"ar":{"1":"بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ","2":"ٱلۡحَمۡدُ لِلَّهِ رَبِّ ٱلۡعَٰلَمِينَ","3":"ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ","4":"مَٰلِكِ يَوۡمِ ٱلدِّينِ","5":"إِيَّاكَ نَعۡبُدُ وَإِيَّاكَ نَسۡتَعِينُ","6":"ٱهۡدِنَا ٱلصِّرَٰطَ ٱلۡمُسۡتَقِيمَ","7":"صِرَٰطَ ٱلَّذِينَ أَنۡعَمۡتَ عَلَيۡهِمۡ غَيۡرِ ٱلۡمَغۡضُوبِ عَلَيۡهِمۡ وَلَا ٱلضَّآلِّينَ"},"bn":{"1":"রহমান, রহীম [১] আল্লাহ্‌র নামে [২]","2":"সকল ‘হাম্‌দ’ [১] আল্লাহ্‌র [২] , যিনি সৃষ্টিকুলের [৩] রব [৪],","3":"দয়াময়, পরম দয়ালু [১],","4":"বিচার দিনের মালিক [১]।","5":"আমরা শুধু আপনারই ‘ইবাদাত [১] করি [২], এবং শুধু আপনারই সাহায্য প্রার্থনা করি [৩],","6":"আমাদেরকে সরল পথের হিদায়াত দিন [১]","7":"তাদের পথ, যাদেরকে আপনি নি‘আমত দিয়েছেন [১], যাদের উপর আপনার ক্রোধ আপতিত হয়নি [২] এবং যারা পথভ্রষ্টও নয় [৩]"}},"2":{"ar":{"255":"ٱللَّهُ لَآ إِلَٰهَ إِلَّا هُوَ ٱلۡحَيُّ ٱلۡقَيُّومُۚ لَا تَأۡخُذُهُۥ سِنَةٞ وَلَا نَوۡمٞۚ لَّهُۥ مَا فِي ٱلسَّمَٰوَٰتِ وَمَا فِي ٱلۡأَرۡضِۗ مَن ذَا ٱلَّذِي يَشۡفَعُ عِندَهُۥٓ إِلَّا بِإِذۡنِهِۦۚ يَعۡلَمُ مَا بَيۡنَ أَيۡدِيهِمۡ وَمَا خَلۡفَهُمۡۖ وَلَا يُحِيطُونَ بِشَيۡءٖ مِّنۡ عِلۡمِهِۦٓ إِلَّا بِمَا شَآءَۚ وَسِعَ كُرۡسِيُّهُ ٱلسَّمَٰوَٰتِ وَٱلۡأَرۡضَۖ وَلَا يَـُٔودُهُۥ حِفۡظُهُمَاۚ وَهُوَ ٱلۡعَلِيُّ ٱلۡعَظِيمُ"},"bn":{"255":"আল্লাহ্‌ [১], তিনি ছাড়া কোনো সত্য ইলাহ নেই [২]। তিনি চিরঞ্জীব, সর্বসত্তার ধারক [৩]। তাঁকে তন্দ্রাও স্পর্শ করতে পারে না, নিদ্রাও নয় [৪]। আসমানসমূহে যা রয়েছে ও যমীনে যা রয়েছে সবই তাঁর [৫]। কে সে, যে তাঁর অনুমতি ব্যতীত তাঁর কাছে সুপারিশ করবে [৬]? তাদের সামনে ও পেছনে যা কিছু আছে তা তিনি জানেন [৭]। আর যা তিনি ইচ্ছে করেন তা ছাড়া তাঁর জ্ঞানের কোনো কিছুকেই তারা পরিবেষ্টন করতে পারে না [৮]। তাঁর ‘কুরসী’ আসমানসমূহ ও যমীনকে পরিব্যাপ্ত করে আছে [৯]; আর এ দুটোর রক্ষণাবেক্ষণ তাঁর জন্য বোঝা হয় না [১০]। আর তিনি সুউচ্চ সুমহান। [১১]"}},"103":{"ar":{"1":"وَٱلۡعَصۡرِ","2":"إِنَّ ٱلۡإِنسَٰنَ لَفِي خُسۡرٍ","3":"إِلَّا ٱلَّذِينَ ءَامَنُواْ وَعَمِلُواْ ٱلصَّٰلِحَٰتِ وَتَوَاصَوۡاْ بِٱلۡحَقِّ وَتَوَاصَوۡاْ بِٱلصَّبۡرِ"},"bn":{"1":"সময়ের শপথ [১] ,","2":"নিশ্চয় মানুষ [১] ক্ষতির মাঝে নিপতিত [২],","3":"কিন্তু তারা নয় [১], যারা ঈমান এনেছে [২] এবং সৎকাজ করেছে [৩] আর পরস্পরকে উপদেশ দিয়েছে হকের [৪] এবং উপদেশ দিয়েছে ধৈর্যের [৫]।"}},"108":{"ar":{"1":"إِنَّآ أَعۡطَيۡنَٰكَ ٱلۡكَوۡثَرَ","2":"فَصَلِّ لِرَبِّكَ وَٱنۡحَرۡ","3":"إِنَّ شَانِئَكَ هُوَ ٱلۡأَبۡتَرُ"},"bn":{"1":"নিশ্চয় আমরা আপনাকে কাউছার [১] দান করেছি।","2":"কাজেই আপনি আপনার রবের উদ্দেশ্যে সালাত আদায় করুন এবং কুরবানী করুন [১]।","3":"নিশ্চয় আপনার প্রতি বিদ্বেষ পোষণকারীই তো নির্বংশ [১]।"}},"109":{"ar":{"1":"قُلۡ يَٰٓأَيُّهَا ٱلۡكَٰفِرُونَ","2":"لَآ أَعۡبُدُ مَا تَعۡبُدُونَ","3":"وَلَآ أَنتُمۡ عَٰبِدُونَ مَآ أَعۡبُدُ","4":"وَلَآ أَنَا۠ عَابِدٞ مَّا عَبَدتُّمۡ","5":"وَلَآ أَنتُمۡ عَٰبِدُونَ مَآ أَعۡبُدُ","6":"لَكُمۡ دِينُكُمۡ وَلِيَ دِينِ"},"bn":{"1":"বলুন, ‘হে কাফিররা!","2":"‘আমি তার ‘ইবাদাত করি না যার ‘ইবাদাত তোমরা কর [১]","3":"এবং তোমরাও তাঁর ‘ইবাদাতকারী নও যাঁর ‘ইবাদাত আমি করি [১],","4":"এবং আমি ‘ইবাদাতকারী নই তার যার ‘ইবাদাত তোমরা করে আসছ।","5":"এবং তোমরাও তাঁর ‘ইবাদাতকারী হবে না যাঁর ‘ইবাদাত আমি করি,","6":"তোমাদের দীন তোমাদের, আর আমার দ্বীন আমার [১]।’"}},"112":{"ar":{"1":"قُلۡ هُوَ ٱللَّهُ أَحَدٌ","2":"ٱللَّهُ ٱلصَّمَدُ","3":"لَمۡ يَلِدۡ وَلَمۡ يُولَدۡ","4":"وَلَمۡ يَكُن لَّهُۥ كُفُوًا أَحَدُۢ"},"bn":{"1":"বলুন [১] , ‘তিনি আল্লাহ্, এক-অদ্বিতীয় [২] ,","2":"‘আল্লাহ্ হচ্ছেন ‘সামাদ' [১] (তিনি কারো মুখাপেক্ষী নন, সকলেই তাঁর মুখাপেক্ষী);","3":"তিনি কাউকেও জন্ম দেননি এবং তাঁকেও জন্ম দেয়া হয়নি [১] ,","4":"‘এবং তাঁর সমতুল্য কেউই নেই [১]।’"}},"113":{"ar":{"1":"قُلۡ أَعُوذُ بِرَبِّ ٱلۡفَلَقِ","2":"مِن شَرِّ مَا خَلَقَ","3":"وَمِن شَرِّ غَاسِقٍ إِذَا وَقَبَ","4":"وَمِن شَرِّ ٱلنَّفَّٰثَٰتِ فِي ٱلۡعُقَدِ","5":"وَمِن شَرِّ حَاسِدٍ إِذَا حَسَدَ"},"bn":{"1":"বলুন [১], ‘আমি আশ্রয় প্রার্থনা করছি [২] ঊষার রবের [৩]","2":"তিনি যা সৃষ্টি করেছেন তার অনিষ্ট হতে [১],","3":"আর অনিষ্ট হতে রাতের অন্ধকারের, যখন তা গভীর হয় [১]","4":"আর অনিষ্ট হতে সমস্ত নারীদের, যারা গিরায় ফুঁক দেয় [১],","5":"আর অনিষ্ট হতে হিংসুকের [১], যখন সে হিংসা করে [২]।’"}},"114":{"ar":{"1":"قُلۡ أَعُوذُ بِرَبِّ ٱلنَّاسِ","2":"مَلِكِ ٱلنَّاسِ","3":"إِلَٰهِ ٱلنَّاسِ","4":"مِن شَرِّ ٱلۡوَسۡوَاسِ ٱلۡخَنَّاسِ","5":"ٱلَّذِي يُوَسۡوِسُ فِي صُدُورِ ٱلنَّاسِ","6":"مِنَ ٱلۡجِنَّةِ وَٱلنَّاسِ"},"bn":{"1":"বলুন, ‘আমি আশ্ৰয় প্রার্থনা করছি মানুষের রবের,","2":"মানুষের অধিপতির,","3":"মানুষের ইলাহের কাছে [১]","4":"আত্মগোপনকারী কুমন্ত্রণাদাতার [১] অনিষ্ট হতে,","5":"যে কুমন্ত্রণা দেয় মানুষের অন্তরে,","6":"জিনের মধ্য থেকে এবং মানুষের মধ্য থেকে [১]।’"}}};
+
   function buildAlafasyMp3Url(suraNum, ayahNum) {
     return `https://verses.quran.foundation/Alafasy/mp3/${String(suraNum).padStart(3, '0')}${String(ayahNum).padStart(3, '0')}.mp3`;
   }
@@ -2905,12 +3267,21 @@
             targetSpec = { sura: sNum, start: a1, end: a1 };
           }
         } else if (
-          maxA <= 15 &&
-          /(?:অর্থ|অনুবাদ|তাফস[ীি]র|আরবি|বাংলা|বলো|বলুন|দাও|দিন|লিখ|শোনাও|পড়)/iu.test(q) &&
+          /(?:অর্থ|অনুবাদ|তাফস[ীি]র|আরবি|বাংলা|বলো|বলুন|দাও|দিন|লিখ|শোনাও|পড়|শানে\s*নু[যজ][ুূ]ল)/iu.test(q) &&
           !/(?:ফযীলত|ফজিলত|কখন\s*পড়|সালাতে|নামাজে|ইমামের|পিছনে|ভুল|অভিযোগ)/iu.test(q)
         ) {
-          // Short surah requested in full (e.g., "সূরা ফাতিহার অর্থ ও তাফসীর বলো", "সূরা ইখলাস অর্থসহ")
-          targetSpec = { sura: sNum, start: 1, end: maxA, label: `সূরা ${sBn} (সম্পূর্ণ ১–${toBnDigitsStr(maxA)} আয়াত)` };
+          if (maxA <= 15) {
+            // Short surah requested in full (e.g., "সূরা ফাতিহার অর্থ ও তাফসীর বলো", "সূরা ইখলাস অর্থসহ")
+            targetSpec = { sura: sNum, start: 1, end: maxA, label: `সূরা ${sBn} (সম্পূর্ণ ১–${toBnDigitsStr(maxA)} আয়াত)` };
+          } else {
+            const openEnd = Math.min(maxA, 5);
+            targetSpec = {
+              sura: sNum,
+              start: 1,
+              end: openEnd,
+              label: `সূরা ${sBn} (প্রথম ১–${toBnDigitsStr(openEnd)} আয়াত ও তাফসীর — মোট ${toBnDigitsStr(maxA)} আয়াত)`,
+            };
+          }
         }
       }
     }
@@ -2932,7 +3303,10 @@
       getQuranArabicData(),
     ]);
 
-    if (!Array.isArray(bnArr) || !bnArr.length) return null;
+    const offlineSurah = OFFLINE_ESSENTIAL_QURAN[String(sNum)] || null;
+    const hasOnlineBn = Array.isArray(bnArr) && bnArr.length > 0;
+    const hasOfflineBn = Boolean(offlineSurah && offlineSurah.bn && offlineSurah.bn[String(startA)]);
+    if (!hasOnlineBn && !hasOfflineBn) return null;
 
     const arSurah = quranArObj && Array.isArray(quranArObj.verses) ? quranArObj.verses[sNum - 1] : null;
     const verseBlocks = [];
@@ -2940,8 +3314,13 @@
     const evidences = [];
 
     for (let a = startA; a <= endA; a++) {
-      const arText = (Array.isArray(arSurah) && arSurah[a - 1]) || '';
-      const rawBn = bnArr[a - 1] || '';
+      const arText =
+        (Array.isArray(arSurah) && arSurah[a - 1]) ||
+        (offlineSurah && offlineSurah.ar && offlineSurah.ar[String(a)]) ||
+        '';
+      const rawBn =
+        (hasOnlineBn ? bnArr[a - 1] : offlineSurah && offlineSurah.bn ? offlineSurah.bn[String(a)] : '') || '';
+      if (!rawBn && !arText) continue;
       const cleanBn = rawBn.replace(/\s*\[[০-৯0-9]+\]/g, '').replace(/\s+/g, ' ').trim();
       const rawTaf = Array.isArray(tafArr) ? (tafArr[a - 1] || '') : '';
       const cleanTaf = stripHtmlClean(rawTaf);
@@ -3033,22 +3412,36 @@
       )
       .join('\n\n');
 
+    const bookEnrich = resolveDeepBookEnrichment(q);
+    const namedTafsirBook = ISLAMIC_BOOK_COLLECTIONS_META.find(
+      (b) => b.id !== 'bidaya' && b.id !== 'ahmad' && b.re.test(q)
+    );
     const explParas = [];
     if (tafsirBlocks.length) {
       explParas.push(`**সংক্ষিপ্ত তাফসীর (ড. আবু বকর মুহাম্মাদ যাকারিয়া):**\n${tafsirBlocks.slice(0, 3).join('\n\n')}`);
     }
+    if (bookEnrich && bookEnrich.sourceCard) {
+      explParas.push(`📚 **বিস্তারিত তাফসীর গ্রন্থ:** ${bookEnrich.sourceCard.excerpt}`);
+    }
     explParas.push(
       `সূরা ${sBn} একটি **${isMakki ? 'মাক্কী' : 'মাদানী'}** সূরা (মোট ${toBnDigitsStr(maxA)} আয়াত)। নিচের উৎস কার্ড থেকে সম্পূর্ণ তাফসীর পড়তে এবং শায়খ মিশারি রাশিদ আল-আফাসির তিলাওয়াত শুনতে পারবেন।`
     );
+
+    const qSources = [sourceCard];
+    const qRag = [ragEntry];
+    if (bookEnrich && bookEnrich.sourceCard) {
+      qSources.push({ ...bookEnrich.sourceCard, rank: 2 });
+      if (bookEnrich.ragEntry) qRag.push(bookEnrich.ragEntry);
+    }
 
     return {
       mode: 'direct',
       payload: {
         status: 'answered',
         is_chat: false,
-        is_verbatim_card: true,
+        is_verbatim_card: !namedTafsirBook,
         query: question,
-        headline: headlineLabel,
+        headline: namedTafsirBook ? `${namedTafsirBook.name} ও আল-কুরআন — ${headlineLabel}` : headlineLabel,
         primary_source: 'dx_quran',
         primary_source_code: 'dx_quran',
         primary_source_name: 'DAWAH X আল-কুরআন ও তাফসীর',
@@ -3057,7 +3450,7 @@
         explanation_paragraphs: explParas,
         additional_perspectives: [],
         evidences: evidences.slice(0, 5),
-        sources: [sourceCard],
+        sources: qSources,
         external_sources: [extCard],
         videos: [],
         follow_ups: [
@@ -3065,7 +3458,7 @@
           'আয়াতুল কুরসী আরবি ও বাংলা অর্থসহ বলো',
           'সূরা বাকারার শেষ দুই আয়াত অর্থসহ দাও',
         ],
-        rag_context: [ragEntry],
+        rag_context: qRag,
         confidence: 1.0,
         latency_ms: Math.max(1, Math.round(performance.now() - t0)),
         ask_team_url: `${SITE_URL}/ask.html`,
@@ -3217,13 +3610,68 @@
     };
   }
 
+  // v23.0 — Embedded 100% Offline Sahih Masnun Duas (instant response even on zero mobile data!)
+  const OFFLINE_MASNUN_DUAS = [
+    {
+      re: /(?:ঘুমানোর?|শো(?:য়|য়)ার?|নিদ্রার?)\s*(?:আগের?\s*|যাওয়ার?\s*)?(?:দো(?:য়|য়)া|দু(?:য়|য়)া|দো.?আ|দু.?আ)/iu,
+      guardNo: /ঘুম\s*থেকে\s*(?:ওঠা|উঠা|জাগা)/iu,
+      headline: 'ঘুমানোর আগের সহীহ মাসনূন দোয়া (সহীহ বুখারী ৬৩২৪)',
+      ar: 'بِاسْمِكَ اللَّهُمَّ أَمُوتُ وَأَحْيَا',
+      pron: 'উচ্চারণ: বিসমিকাল্লা-হুম্মা আমূতু ওয়া আহইয়া।',
+      bn: 'অর্থ: হে আল্লাহ! আপনারই নামে আমি মৃত্যুবরণ করি (ঘুমাই) এবং আপনারই নামে জীবিত হই (জেগে উঠি)।',
+      ref: 'সহীহ বুখারী — হাদীস ৬৩২৪ (DAWAH X আল-হাদীস)',
+      dxUrl: `${SITE_URL}/hadith.html?book=bukhari&hadith=6324`,
+      hbdUrl: 'https://www.hadithbd.com/hadith/link/?id=6324',
+    },
+    {
+      re: /ঘুম\s*থেকে\s*(?:ওঠার?|উঠার?|জাগার?)\s*(?:দো(?:য়|য়)া|দু(?:য়|য়)া|দো.?আ|দু.?আ)/iu,
+      headline: 'ঘুম থেকে ওঠার সহীহ মাসনূন দোয়া (সহীহ বুখারী ৬৩১২)',
+      ar: 'الْحَمْدُ لِلَّهِ الَّذِي أَحْيَانَا بَعْدَ مَا أَمَاتَنَا وَإِلَيْهِ النُّشُورُ',
+      pron: 'উচ্চারণ: আলহামদু লিল্লা-হিল্লাযী আহইয়া-না বা‘দা মা আমা-তানা ওয়া ইলাইহিন নুশূর।',
+      bn: 'অর্থ: সকল প্রশংসা আল্লাহর জন্য, যিনি আমাদেরকে মৃত্যু (নিদ্রা) দান করার পর পুনরায় জীবন দান করেছেন এবং তাঁরই দিকে পুনরুত্থান।',
+      ref: 'সহীহ বুখারী — হাদীস ৬৩১২ (DAWAH X আল-হাদীস)',
+      dxUrl: `${SITE_URL}/hadith.html?book=bukhari&hadith=6312`,
+      hbdUrl: 'https://www.hadithbd.com/hadith/link/?id=6312',
+    },
+    {
+      re: /(?:বাথরুম|টয়লেট|টয়লেট|শৌচাগার|পায়খানা|পায়খানা)ে?\s*(?:ঢোকার?|প্রবেশ(?:ের)?|যাওয়ার?|বের\s*হওয়ার?)\s*(?:দো(?:য়|য়)া|দু(?:য়|য়)া|দো.?আ|দু.?আ)/iu,
+      headline: 'টয়লেট বা শৌচাগারে প্রবেশ ও বের হওয়ার সহীহ দোয়া (সহীহ বুখারী ১৪২ ও আবু দাউদ ৩০)',
+      ar: 'প্রবেশের দোয়া: اللَّهُمَّ إِنِّي أَعُوذُ بِكَ مِنَ الْخُبُثِ وَالْخَبَائِثِ\nবের হওয়ার দোয়া: غُفْرَانَكَ',
+      pron: 'প্রবেশে: আল্লা-হুম্মা ইন্নী আ‘ঊযুবিকা মিনাল খুবুছি ওয়াল খাবা-ইছ।\nবের হওয়ার সময়: গুফরা-নাকা।',
+      bn: 'অর্থ: (প্রবেশে) হে আল্লাহ! আমি আপনার কাছে দুষ্ট পুরুষ ও নারী জিন শয়তান থেকে আশ্রয় চাই। (বের হওয়ার সময়) হে আল্লাহ! আমি আপনার ক্ষমা প্রার্থনা করছি।',
+      ref: 'সহীহ বুখারী ১৪২ · সুনানে আবু দাউদ ৩০ (DAWAH X আল-হাদীস)',
+      dxUrl: `${SITE_URL}/hadith.html?book=bukhari&hadith=142`,
+      hbdUrl: 'https://www.hadithbd.com/hadith/filter/?book=12',
+    },
+    {
+      re: /(?:ঘর|বাসা|বাড়ি|বাড়ি)\s*থেকে\s*বের\s*(?:হওয়ার?|হবার?)\s*(?:দো(?:য়|য়)া|দু(?:য়|য়)া|দো.?আ|দু.?আ)/iu,
+      headline: 'ঘর থেকে বের হওয়ার সহীহ মাসনূন দোয়া (সুনানে আবু দাউদ ৫০৯৫ · তিরমিযী ৩৪২৬)',
+      ar: 'بِسْمِ اللَّهِ تَوَكَّلْتُ عَلَى اللَّهِ، وَلَا حَوْلَ وَلَا قُوَّةَ إِلَّا بِاللَّهِ',
+      pron: 'উচ্চারণ: বিসমিল্লা-হি তাওয়াক্কালতু ‘আলাল্লা-হি ওয়া লা হাওলা ওয়া লা কুওয়্যাতা ইল্লা বিল্লা-হ।',
+      bn: 'অর্থ: আল্লাহর নামে বের হচ্ছি, আল্লাহর ওপরই ভরসা করলাম; আর আল্লাহর সাহায্য ছাড়া পাপ থেকে বাঁচার ও নেক কাজ করার কোনো শক্তি নেই।',
+      ref: 'সুনানে আবু দাউদ ৫০৯৫ · জামে তিরমিযী ৩৪২৬ (সহীহ)',
+      dxUrl: `${SITE_URL}/hadith.html?book=abudawud&hadith=5095`,
+      hbdUrl: 'https://www.hadithbd.com/hadith/filter/?book=3',
+    },
+    {
+      re: /(?:সাই(?:য়্য|য়্য|য়|য়)[িে]দুল|সা(?:য়্য|য়্য)িদুল)\s*(?:ইস্তিগফার|ইস্তেগফার)/iu,
+      headline: 'সাইয়্যিদুল ইস্তিগফার — ক্ষমা প্রার্থনার শ্রেষ্ঠ দোয়া (সহীহ বুখারী ৬৩০৬)',
+      ar: 'اللَّهُمَّ أَنْتَ رَبِّي لَا إِلَهَ إِلَّا أَنْتَ، خَلَقْتَنِي وَأَنَا عَبْدُكَ، وَأَنَا عَلَى عَهْدِكَ وَوَعْدِكَ مَا اسْتَطَعْتُ، أَعُوذُ بِكَ مِنْ شَرِّ مَا صَنَعْتُ، أَبُوءُ لَكَ بِنِعْمَتِكَ عَلَيَّ، وَأَبُوءُ لَكَ بِذَنْبِي فَاغْفِرْ لِي، فَإِنَّهُ لَا يَغْفِرُ الذُّنُوبَ إِلَّا أَنْتَ',
+      pron: 'উচ্চারণ: আল্লা-হুম্মা আনতা রব্বী লা ইলা-হা ইল্লা আনতা, খালাক্বতানী ওয়া আনা ‘আবদুকা, ওয়া আনা ‘আলা ‘আহদিকা ওয়া ওয়া‘দিকা মাস্তাত্বা‘তু, আ‘ঊযুবিকা মিন শাররি মা সানা‘তু, আবূউ লাকা বিনি‘মাতিকা ‘আলাইয়্যা ওয়া আবূউ লাকা বিযাম্বী ফাগফির লী, ফাইন্নাহূ লা ইয়াগফিরুয যুনূবা ইল্লা আনতা।',
+      bn: 'অর্থ: হে আল্লাহ! আপনি আমার প্রতিপালক, আপনি ছাড়া কোনো সত্য উপাস্য নেই। আপনি আমাকে সৃষ্টি করেছেন এবং আমি আপনার বান্দা। আমি সাধ্যমতো আপনার অঙ্গীকার ও প্রতিশ্রুতির ওপর অটল আছি। আমার কৃতকর্মের অনিষ্ট থেকে আপনার কাছে আশ্রয় চাই। আমার ওপর আপনার নিআমত স্বীকার করছি এবং আমার গুনাহও স্বীকার করছি। অতএব আমাকে ক্ষমা করুন; নিশ্চয়ই আপনি ছাড়া গুনাহ ক্ষমা করার আর কেউ নেই।',
+      ref: 'সহীহ বুখারী — হাদীস ৬৩০৬ (DAWAH X আল-হাদীস)',
+      dxUrl: `${SITE_URL}/hadith.html?book=bukhari&hadith=6306`,
+      hbdUrl: 'https://www.hadithbd.com/hadith/filter/?book=12',
+    },
+  ];
+
   async function resolveDawahXHadithDirect(question, t0) {
     const q = String(question || '').trim();
 
     // Famous Named Prophetic Dua-Hadith Verbatim Lookups from DAWAH X Hadith Corpus
     const isConditionalFiqhQ = /(?:জা(?:য়|য়)ে[যজ]\s*কি|বিধান\s*ক[িী]|হুকুম\s*ক[িী]|ছালাতের?\s*মধ্যে|নামাজের?\s*মধ্যে|সকাল\s*আর\s*সন্ধ্যা\s*কখন|একাকী\s*প(?:ড়|ড়)া)/iu.test(q);
     if (!isConditionalFiqhQ && /(?:সাই(?:য়্য|য়্য|য়|য়)[িে]দুল|সা(?:য়্য|য়্য)িদুল)\s*(?:ইস্তিগফার|ইস্তেগফার)/iu.test(q)) {
-      const found = await lookupHadithByBookAndNumber('bukhari', 6306);
+      const found = await lookupHadithByBookAndNumber('bukhari', 6306).catch(() => null);
       if (found) {
         const formatted = formatHadithRecordCard(found, 'bukhari', 1);
         return {
@@ -3264,8 +3712,8 @@
 
     if (!isConditionalFiqhQ && /(?:খা(?:ও|ওয়া|ওয়া)র?|খাবার|আহার).*(?:শুরু|শেষ).*(?:দো(?:য়|য়)া|দু(?:য়|য়)া|দো.?আ|দু.?আ)/iu.test(q)) {
       const [beforeEat, afterEat] = await Promise.all([
-        lookupHadithByBookAndNumber('abudawud', 3767),
-        lookupHadithByBookAndNumber('tirmidhi', 3458),
+        lookupHadithByBookAndNumber('abudawud', 3767).catch(() => null),
+        lookupHadithByBookAndNumber('tirmidhi', 3458).catch(() => null),
       ]);
       if (beforeEat && afterEat) {
         const f1 = formatHadithRecordCard(beforeEat, 'abudawud', 1);
@@ -3301,6 +3749,79 @@
             ask_team_url: `${SITE_URL}/ask.html`,
           },
         };
+      }
+    }
+
+    // Embedded offline Sahih Masnun Duas (instant response online & 100% offline!)
+    if (!isConditionalFiqhQ) {
+      for (const dua of OFFLINE_MASNUN_DUAS) {
+        if (dua.re.test(q) && (!dua.guardNo || !dua.guardNo.test(q))) {
+          const fullTxt = `${dua.ar}\n\n${dua.pron}\n\n${dua.bn}\n\nদলিল: ${dua.ref}`;
+          return {
+            mode: 'direct',
+            payload: {
+              status: 'answered',
+              is_chat: false,
+              is_verbatim_card: true,
+              query: q,
+              primary_key: `dua_${dua.headline.slice(0, 18)}`,
+              primary_source: 'dx_hadith',
+              primary_source_code: 'dx_hadith',
+              primary_source_name: 'DAWAH X আল-হাদীস · মাসনূন দুআ',
+              primary_url: dua.dxUrl,
+              headline: dua.headline,
+              direct_answer: `${dua.ar}\n\n**${dua.pron}**\n\n**${dua.bn}**`,
+              explanation_paragraphs: [`📖 **সহীহ দলিল:** ${dua.ref}`],
+              additional_perspectives: [],
+              evidences: [
+                {
+                  text: `${dua.ar} — ${dua.bn}`,
+                  source_name: dua.ref,
+                  dawahx_url: dua.dxUrl,
+                },
+              ],
+              sources: [
+                {
+                  rank: 1,
+                  key: `dua_${dua.headline.slice(0, 18)}`,
+                  title: dua.headline,
+                  clean_title: dua.headline,
+                  source_code: 'dx_hadith',
+                  source_name: 'DAWAH X আল-হাদীস',
+                  category: 'মাসনূন দুআ',
+                  doc_type: 'hadith',
+                  dawahx_url: dua.dxUrl,
+                  share_url: dua.dxUrl,
+                  confidence: 1.0,
+                  excerpt: dua.bn,
+                  full_text: fullTxt,
+                },
+              ],
+              external_sources: [
+                {
+                  rank: 1,
+                  source_site: 'HadithBD',
+                  source_name: 'HadithBD.com · আল-হাদীস',
+                  title: dua.ref,
+                  url: dua.hbdUrl,
+                  excerpt: dua.bn,
+                  full_text: fullTxt,
+                },
+              ],
+              videos: [],
+              rag_context: [
+                {
+                  citation: `[1] ${dua.headline} — ${dua.dxUrl}`,
+                  content: fullTxt,
+                },
+              ],
+              follow_ups: ['ঘুম থেকে ওঠার দোয়া কী?', 'সাইয়্যিদুল ইস্তিগফার অর্থসহ বলো', 'ঘর থেকে বের হওয়ার দোয়া বলো'],
+              confidence: 1.0,
+              latency_ms: Math.max(1, Math.round(performance.now() - t0)),
+              ask_team_url: `${SITE_URL}/ask.html`,
+            },
+          };
+        }
       }
     }
 
@@ -3819,23 +4340,27 @@
         return chatReply;
       }
 
-      await this.init();
       const { query: contextualQuery, usedHistory } = augmentQueryWithHistory(question, history);
 
-      // v22.0 Step A: DAWAH X Site Info, Contact, Policy & 102-Volume Islamic Books Responder
+      // v22.0/v23.0 Step A: DAWAH X Site Info, Contact, Policy & 102-Volume Islamic Books Responder
       if (sourceFilter === 'all') {
         const siteOrBookResp = await resolveDawahXSiteAndBooks(contextualQuery, this, t0).catch(() => null);
         if (siteOrBookResp) return siteOrBookResp;
       }
 
-      // v22.0 Step B & C: Verbatim DAWAH X 114-Surah Quran/Tafsir & 28-Book Hadith Lookup
+      // v22.0/v23.0 Step B & C: Verbatim DAWAH X 114-Surah Quran/Tafsir, 28-Book Hadith & Deep 102-Vol Book Enrichment
       let quranEnrich = null;
       let hadithEnrich = null;
-      if (sourceFilter === 'all') {
+      const bookEnrich =
+        sourceFilter === 'all' || sourceFilter === 'quran' ? resolveDeepBookEnrichment(contextualQuery) : null;
+
+      if (sourceFilter === 'all' || sourceFilter === 'quran') {
         const qRes = await resolveDawahXQuranScripture(contextualQuery, t0).catch(() => null);
         if (qRes && qRes.mode === 'direct') return qRes.payload;
         if (qRes && qRes.mode === 'enrich') quranEnrich = qRes;
+      }
 
+      if (sourceFilter === 'all' || sourceFilter === 'hadith') {
         const hRes = await resolveDawahXHadithDirect(contextualQuery, t0).catch(() => null);
         if (hRes && hRes.mode === 'direct') return hRes.payload;
         if (hRes && hRes.mode === 'enrich') hadithEnrich = hRes;
@@ -3852,6 +4377,14 @@
         );
       if (isSecularUtility && !hasIslamicFraming) {
         return this._notFoundPayload(question, [], [], t0);
+      }
+
+      // Graceful offline: if the corpus index cannot be fetched at all (100% offline or
+      // network failure), return a clean unanswered/offline payload instead of throwing.
+      try {
+        await this.init();
+      } catch (_) {
+        return this._offlinePayload(question, t0);
       }
 
       // Stage 1: Linguistic expansion & Concept-Group shard retrieval
@@ -4018,6 +4551,13 @@
 
       totalCoreIdf = Math.max(totalCoreIdf, 1.0);
 
+      // When user explicitly selected "সহীহ হাদীস" filter, search the 28-Book 61,910-Hadith Corpus first!
+      if (sourceFilter === 'hadith') {
+        const hadithVids = await this.searchVideos(conceptGroups, 3).catch(() => []);
+        const hPrimary = await searchDawahXHadithCorpus(conceptGroups, contextualQuery, hadithVids, t0);
+        if (hPrimary) return hPrimary;
+      }
+
       // Collect top Stage-1 candidates (plus highest full-body-coverage treatises!)
       const stage1 = [];
       const bodyCompletePool = [];
@@ -4043,7 +4583,7 @@
 
       stage1.sort((a, b) => b[1] - a[1]);
       bodyCompletePool.sort((a, b) => b[2] - a[2] || b[1] - a[1]);
-      const s1Limit = ['at', 'ai', 'ik', 'fm', 'ra', 'iz', 'ia', 'article'].includes(sourceFilter) ? 56 : 24;
+      const s1Limit = ['at', 'ai', 'ik', 'fm', 'ra', 'iz', 'ia', 'article', 'quran', 'hadith'].includes(sourceFilter) ? 56 : 24;
       const topStage1 = stage1.slice(0, s1Limit);
       const pickedIds = new Set(topStage1.map((x) => x[0]));
       for (const bc of bodyCompletePool.slice(0, 6)) {
@@ -4053,9 +4593,48 @@
         }
       }
 
+      const buildDeepBookOnlyAnswer = (videosArr = []) => {
+        if (!bookEnrich || !bookEnrich.sourceCard) return null;
+        return {
+          status: 'answered',
+          is_chat: false,
+          is_verbatim_card: false,
+          query: question,
+          headline: bookEnrich.directFallbackHeadline,
+          primary_source: 'dx_books',
+          primary_source_code: 'dx_books',
+          primary_source_name: bookEnrich.sourceCard.source_name,
+          primary_doc_type: 'book',
+          primary_key: bookEnrich.sourceCard.key,
+          primary_url: bookEnrich.sourceCard.dawahx_url,
+          share_url: bookEnrich.sourceCard.dawahx_url,
+          direct_answer: bookEnrich.directFallbackAnswer,
+          explanation_paragraphs: [
+            'নিচের উৎস কার্ডে ক্লিক করে সরাসরি **DAWAH X বুক রিডার** থেকে উক্ত খণ্ডের মূল পৃষ্ঠাগুলো অনলাইনে পড়তে পারবেন।',
+          ],
+          additional_perspectives: [],
+          evidences: [],
+          sources: [{ ...bookEnrich.sourceCard, rank: 1 }],
+          external_sources: [],
+          videos: videosArr.slice(0, 3),
+          follow_ups: [
+            'DAWAH X এ আর কী কী ইসলামিক বই ও তাফসীর আছে?',
+            'আল বিদায়া ওয়ান নিহায়া মোট কয় খণ্ডে আছে?',
+          ],
+          rag_context: bookEnrich.ragEntry ? [bookEnrich.ragEntry] : [],
+          confidence: 0.92,
+          latency_ms: Math.max(1, Math.round(performance.now() - t0)),
+          ask_team_url: `${SITE_URL}/ask.html`,
+        };
+      };
+
       if (!topStage1.length) {
-        const hFallback = await searchDawahXHadithCorpus(conceptGroups, contextualQuery, [], t0);
-        if (hFallback) return hFallback;
+        if (sourceFilter !== 'quran') {
+          const hFallback = await searchDawahXHadithCorpus(conceptGroups, contextualQuery, [], t0);
+          if (hFallback) return hFallback;
+        }
+        const bOnly = buildDeepBookOnlyAnswer([]);
+        if (bOnly) return bOnly;
         return this._notFoundPayload(question, [], [], t0);
       }
 
@@ -4224,6 +4803,17 @@
           specificityAdj -= 0.04;
         }
 
+        let filterScriptureAdj = 0.0;
+        if (sourceFilter === 'quran') {
+          const hasQuranCitation = /(?:সূরা|সুরা|আল-কুরআন|কুরআনে|আয়াত|﴿)/u.test(doc.answer_body);
+          if (!hasQuranCitation) continue;
+          filterScriptureAdj += 0.08;
+        } else if (sourceFilter === 'hadith') {
+          const hasHadithCitation = /(?:বুখার[ীি]|মুসলিম|তিরমি[যজ][ীি]|আব[ূু]\s*দা[উঊ]দ|নাসা[ঈই]|ইবন[েু]\s*মাজাহ|মিশকাত|হাদ[ীি][সছ])/u.test(doc.answer_body);
+          if (!hasHadithCitation) continue;
+          filterScriptureAdj += 0.08;
+        }
+
         const normS1 = s1Score / maxS1;
         let conf =
           0.32 * cov +
@@ -4238,7 +4828,8 @@
           otherRelPenalty +
           missingAnchorPenalty +
           missingTopSubjPenalty +
-          specificityAdj;
+          specificityAdj +
+          filterScriptureAdj;
 
         if (cov < 0.30 && topSubjHit === 0) conf *= 0.35;
         doc.raw_score = conf;
@@ -4257,8 +4848,12 @@
 
       const minCoreCov = conceptGroups.length >= 4 ? 0.42 : 0.32;
       if (!reranked.length || reranked[0].confidence < 0.36 || reranked[0].core_coverage < minCoreCov) {
-        const hFallback = await searchDawahXHadithCorpus(conceptGroups, contextualQuery, videos, t0);
-        if (hFallback) return hFallback;
+        if (sourceFilter !== 'quran') {
+          const hFallback = await searchDawahXHadithCorpus(conceptGroups, contextualQuery, videos, t0);
+          if (hFallback) return hFallback;
+        }
+        const bOnly = buildDeepBookOnlyAnswer(videos);
+        if (bOnly) return bOnly;
         return this._notFoundPayload(question, reranked.slice(0, 3), videos, t0);
       }
 
@@ -4433,7 +5028,7 @@
       });
 
       const extraExtSources = [];
-      for (const enrich of [quranEnrich, hadithEnrich]) {
+      for (const enrich of [quranEnrich, hadithEnrich, bookEnrich]) {
         if (!enrich) continue;
         if (Array.isArray(enrich.evidences)) {
           for (const ev of enrich.evidences) {
@@ -4526,6 +5121,33 @@
           'আল্লাহর রহমত ও তওবা কবুলের শর্ত কী?',
         ],
         confidence: validPartials[0] ? validPartials[0].confidence : 0,
+        latency_ms: Math.round(performance.now() - t0),
+        ask_team_url: `${SITE_URL}/ask.html`,
+      };
+    },
+
+    // Clean offline payload when the corpus index is entirely unreachable (100% offline).
+    _offlinePayload(question, t0) {
+      return {
+        status: 'offline',
+        is_chat: true,
+        query: question,
+        headline: '',
+        direct_answer:
+          'এই মুহূর্তে ডিভাইস একটু অনলাইন নেটওয়ার্ক ছাড়া অবস্থানে আছে, তাই **DAWAH X** কর্পাস ডাটাবেস খুঁজে পাওয়া যাচ্ছে না। নেটওয়ার্ক সংযোগ স্থাপন করে পুনরায় চেষ্টা করুন—কুরআন, হাদিস, তাফসীর ও ফতোয়ার একটি বড় অংশ অনলাইন হলেই সেখান থেকে সরাসরি উত্তর দেওয়া হবে।',
+        explanation_paragraphs: [
+          'অনলাইন হয়ে গেলে শুধুমাত্র **DAWAH X**, **Quran.com** ও **HadithBD.com**—এই তিনটি যাচাইকৃত উৎস থেকেই উত্তর দেওয়া হবে। কিছু সুরা, মাসনুন দোয়া ও সালাতের সময়সূচি তো ডিভাইসেই স্থানীয়ভাবে রয়েছে, সেগুলো অনলাইন ছাড়াও ব্যবহার করতে পারেন।',
+        ],
+        additional_perspectives: [],
+        evidences: [],
+        sources: [],
+        videos: [],
+        follow_ups: [
+          'আয়াতুল কুরসী অর্থসহ দাও',
+          'ঘুমানোর দোয়া বাংলা অর্থসহ',
+          'সালাতের সময়সূচি দেখাও',
+        ],
+        confidence: 0,
         latency_ms: Math.round(performance.now() - t0),
         ask_team_url: `${SITE_URL}/ask.html`,
       };

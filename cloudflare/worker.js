@@ -2,6 +2,7 @@ import {
   handleAIChat,
   handleHealth,
   handleOptions,
+  handleUnansweredTracker,
   handleVoiceSTT,
   handleVoiceTTS,
   jsonResponse,
@@ -28,6 +29,9 @@ export default {
       if (path === '/api/tts' && (request.method === 'GET' || request.method === 'POST')) {
         return handleVoiceTTS(request, env, ctx);
       }
+      if (path === '/api/unanswered' && (request.method === 'GET' || request.method === 'POST')) {
+        return handleUnansweredTracker(request, env, ctx);
+      }
       return jsonResponse({ ok: false, error: 'Not found' }, 404);
     }
 
@@ -39,7 +43,13 @@ export default {
     return jsonResponse({
       ok: true,
       service: 'DAWAH X AI — Cloudflare Workers AI Endpoint',
-      endpoints: ['GET /api/health', 'POST /api/ai', 'POST /api/stt', 'GET/POST /api/tts'],
+      endpoints: [
+        'GET /api/health',
+        'POST /api/ai',
+        'POST /api/stt',
+        'GET/POST /api/tts',
+        'GET/POST /api/unanswered',
+      ],
     });
   },
 };

@@ -1,4 +1,4 @@
-/* ===== DAWAH X AI — Clean, Cached, Accurate & Complete Client Engine (v21.0) ===== */
+/* ===== DAWAH X AI — Clean, Cached, Accurate & Complete Client Engine (v23.0) ===== */
 (function () {
   'use strict';
 
@@ -190,8 +190,9 @@
 
   const SESSIONS_KEY = 'dawahx_sessions_v3';
   const BOOKMARKS_KEY = 'dawahx_bookmarks_v3';
-  const AI_CACHE_KEY = 'dawahx_ai_cache_v22_3src';
+  const AI_CACHE_KEY = 'dawahx_ai_cache_v23_3src';
   try {
+    localStorage.removeItem('dawahx_ai_cache_v22_3src');
     localStorage.removeItem('dawahx_ai_cache_v20_3src');
     localStorage.removeItem('dawahx_ai_cache_v19_3src');
     localStorage.removeItem('dawahx_ai_cache_v18_only');
@@ -239,14 +240,26 @@
   }
 
   // Client-side 7-day LRU cache for verified grounded answers (DAWAH X + Quran.com + HadithBD)
-  function makeLocalCacheKey(question, primaryKey) {
+  function makeLocalCacheKey(question, primaryKey, historySnapshot) {
     const normQ = String(question || '').trim().toLowerCase().replace(/\s+/g, ' ');
     if (!normQ) return '';
-    return `${primaryKey || 'ext3'}::${normQ}`;
+    let ctxSig = '';
+    if (Array.isArray(historySnapshot) && historySnapshot.length) {
+      const isSituational =
+        normQ.length <= 58 ||
+        /(?:আমার\s*ক্ষেত্রে|এক্ষেত্রে|এই\s*অবস্থায়|সফরে|ভুলে|তাহলে|ওটার|এটার|সেটার|এর\s*হুকুম)/u.test(normQ);
+      if (isSituational) {
+        const lastUser = [...historySnapshot].reverse().find((h) => h && h.role === 'user' && h.text);
+        if (lastUser) {
+          ctxSig = '::ctx:' + String(lastUser.text).trim().toLowerCase().slice(0, 48);
+        }
+      }
+    }
+    return `${primaryKey || 'ext3'}::${normQ}${ctxSig}`;
   }
 
-  function getCachedGroundedAnswer(question, primaryKey) {
-    const k = makeLocalCacheKey(question, primaryKey);
+  function getCachedGroundedAnswer(question, primaryKey, historySnapshot) {
+    const k = makeLocalCacheKey(question, primaryKey, historySnapshot);
     if (!k) return null;
     const store = loadStoredJson(AI_CACHE_KEY, []);
     const now = Date.now();
@@ -259,8 +272,8 @@
     };
   }
 
-  function putCachedGroundedAnswer(question, primaryKey, answerText, externalSources, upgradedGrounded) {
-    const k = makeLocalCacheKey(question, primaryKey);
+  function putCachedGroundedAnswer(question, primaryKey, answerText, externalSources, upgradedGrounded, historySnapshot) {
+    const k = makeLocalCacheKey(question, primaryKey, historySnapshot);
     if (!k || !isCompleteSentence(answerText) || answerText.length < 80) return;
     const store = loadStoredJson(AI_CACHE_KEY, []).filter((it) => it && it.k !== k);
     store.unshift({
@@ -271,6 +284,22 @@
       t: Date.now(),
     });
     saveStoredJson(AI_CACHE_KEY, store.slice(0, 40));
+  }
+
+  // v23.0 — Silent anonymous tracker for unanswered Islamic questions when Worker stream wasn't invoked
+  function reportUnansweredQuestionClient(question) {
+    const cleanQ = String(question || '').trim().slice(0, 280);
+    if (!cleanQ || cleanQ.length < 4) return;
+    const base = cfAiEndpointBase || DEFAULT_CF_WORKER_URL || '';
+    const url = base ? `${base}/api/unanswered` : 'api/unanswered';
+    try {
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: cleanQ, filter: activeFilter || 'all' }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   function buildExternalSourcesHtml(extSources) {
@@ -678,6 +707,86 @@
     };
 
     ttsSynthTimer = setTimeout(speakNext, 65);
+  }
+
+  // v23.0 — Unlock shared HTMLAudioElement during user's microphone tap gesture so hands-free auto-reply plays smoothly on iOS/Android
+  function unlockSharedAudioGesture() {
+    if (!sharedTtsAudio) return;
+    try {
+      const prevMuted = sharedTtsAudio.muted;
+      sharedTtsAudio.muted = true;
+      sharedTtsAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA';
+      const p = sharedTtsAudio.play();
+      if (p && typeof p.then === 'function') {
+        p.then(() => {
+          sharedTtsAudio.pause();
+          sharedTtsAudio.currentTime = 0;
+          sharedTtsAudio.muted = prevMuted;
+        }).catch(() => {
+          sharedTtsAudio.muted = prevMuted;
+        });
+      } else {
+        sharedTtsAudio.muted = prevMuted;
+      }
+    } catch (_) {}
+  }
+
+  function autoSpeakCardAnswer(cardEl) {
+    if (!cardEl) return;
+    const speakBtn = cardEl.querySelector('[data-speak-text]');
+    if (!speakBtn) return;
+    let payload = speakBtn.getAttribute('data-speak-text') || '';
+    const headTxt = cardEl.querySelector('.ai-headline')?.textContent?.trim() || '';
+    const streamBodyEl = cardEl.querySelector('.ai-stream-body');
+    const slotEl = cardEl.querySelector('[data-llm-slot]');
+    const liveBody = (streamBodyEl ? streamBodyEl.innerText : slotEl ? slotEl.innerText : '').trim();
+    if (liveBody && (!payload.trim() || liveBody.length > payload.length * 0.7)) {
+      payload = headTxt ? `${headTxt}। ${liveBody}` : liveBody;
+    }
+    if (payload.trim()) {
+      toggleSpeakText(payload, speakBtn);
+    }
+  }
+
+  // v23.0 — Build clean Dawah-formatted share message (Question + concise verdict + citation + deep link)
+  function buildFormattedSharePayload(cardEl, fallbackQ) {
+    const data = cardEl && cardEl._cardData ? cardEl._cardData : null;
+    const q = String((data && data.query) || fallbackQ || '').trim();
+    const filterParam = activeFilter && activeFilter !== 'all' ? `&f=${encodeURIComponent(activeFilter)}` : '';
+    const shareUrl = `${location.origin}${location.pathname}?q=${encodeURIComponent(q)}${filterParam}`;
+
+    let rawAnswer = '';
+    if (cardEl) {
+      const streamBodyEl = cardEl.querySelector('.ai-stream-body');
+      if (streamBodyEl && streamBodyEl.innerText.trim()) {
+        rawAnswer = streamBodyEl.innerText.trim();
+      }
+    }
+    if (!rawAnswer && data) {
+      rawAnswer = String(data.ai_generated || data.direct_answer || '').trim();
+    }
+    const cleanSummary = rawAnswer
+      .replace(/\*\*([^*]+)\*\*/g, '$1')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const shortSummary =
+      cleanSummary.length > 320 ? cleanSummary.slice(0, 317).replace(/\s+\S*$/, '') + '…' : cleanSummary;
+
+    const srcName =
+      (data && (data.primary_source_name || data.sources?.[0]?.source_name || data.external_sources?.[0]?.source_name)) ||
+      'DAWAH X · কুরআন ও সহীহ সুন্নাহ';
+
+    const lines = [];
+    if (q) lines.push(`🕌 *প্রশ্ন:* ${q}`);
+    if (shortSummary) lines.push(`✅ *সংক্ষিপ্ত উত্তর:* ${shortSummary}`);
+    lines.push(`📚 *সূত্র:* ${srcName}`);
+    lines.push(`🔗 *সম্পূর্ণ দলিলসহ দেখুন:*\n${shareUrl}`);
+
+    return {
+      question: q,
+      shareUrl,
+      formattedText: lines.join('\n\n'),
+    };
   }
 
   function toggleSpeakText(rawText, btnEl) {
@@ -1167,14 +1276,29 @@
       return;
     }
 
+    const waShareBtn = e.target.closest('[data-whatsapp-share]');
+    if (waShareBtn) {
+      e.preventDefault();
+      const cardEl = waShareBtn.closest('.msg-ai-card, .msg-ai-chat');
+      const qFallback = waShareBtn.getAttribute('data-whatsapp-share') || '';
+      const { formattedText } = buildFormattedSharePayload(cardEl, qFallback);
+      const waUrl = `https://wa.me/?text=${encodeURIComponent(formattedText)}`;
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     const shareQBtn = e.target.closest('[data-share-q]');
     if (shareQBtn) {
+      const cardEl = shareQBtn.closest('.msg-ai-card, .msg-ai-chat');
       const qText = shareQBtn.getAttribute('data-share-q') || '';
-      const shareUrl = `${location.origin}${location.pathname}?q=${encodeURIComponent(qText)}`;
+      const { shareUrl, formattedText } = buildFormattedSharePayload(cardEl, qText);
       if (navigator.share && window.matchMedia('(max-width: 900px)').matches) {
-        navigator.share({ title: `DAWAH X AI — ${qText}`, url: shareUrl }).catch(() => {});
+        navigator.share({ title: `DAWAH X AI — ${qText}`, text: formattedText }).catch(() => {});
       } else {
-        navigator.clipboard.writeText(shareUrl).then(() => {
+        navigator.clipboard.writeText(formattedText).then(() => {
+          showToast('✓ দলিলসহ উত্তর ও সরাসরি লিংক কপি হয়েছে!');
+        }).catch(() => {
+          navigator.clipboard.writeText(shareUrl).catch(() => {});
           showToast('✓ প্রশ্নের লিংক কপি হয়েছে!');
         });
       }
@@ -1202,6 +1326,8 @@
     if (bmBtn) {
       const key = bmBtn.getAttribute('data-bookmark-key');
       const title = bmBtn.getAttribute('data-bookmark-title') || 'সংরক্ষিত উত্তর';
+      const cardEl = bmBtn.closest('.msg-ai-card, .msg-ai-chat');
+      const cData = cardEl && cardEl._cardData ? cardEl._cardData : null;
       const bookmarks = loadStoredJson(BOOKMARKS_KEY, []);
       const exists = bookmarks.some((b) => b.key === key);
       let next;
@@ -1210,7 +1336,16 @@
         bmBtn.classList.remove('bookmarked');
         bmBtn.textContent = '🔖 সংরক্ষণ';
       } else {
-        next = [{ key, title: title.slice(0, 75), savedAt: Date.now() }, ...bookmarks].slice(0, 20);
+        const offlineSnap = cData
+          ? {
+              headline: cData.headline || title,
+              source_name: cData.primary_source_name || cData.sources?.[0]?.source_name || 'DAWAH X',
+              url: cData.primary_url || cData.sources?.[0]?.dawahx_url || '',
+              body: cData.ai_generated || [cData.direct_answer, ...(cData.explanation_paragraphs || [])].filter(Boolean).join('\n\n'),
+              evidences: (cData.evidences || []).slice(0, 4),
+            }
+          : null;
+        next = [{ key, title: title.slice(0, 75), savedAt: Date.now(), offlineSnap }, ...bookmarks].slice(0, 20);
         bmBtn.classList.add('bookmarked');
         bmBtn.textContent = '✓ সংরক্ষিত';
       }
@@ -1510,13 +1645,18 @@
     targetEl,
     answerCard,
     historySnapshot,
-    bypassCache = false
+    bypassCache = false,
+    autoSpeak = false
   ) {
-    if (!targetEl || data.is_deterministic_tool) return;
+    if (!targetEl || data.is_deterministic_tool) {
+      if (autoSpeak) autoSpeakCardAnswer(answerCard);
+      return;
+    }
     if (data.is_verbatim_card && !bypassCache) {
       if (answerCard) {
         answerCard._regenCtx = { question, data, slot: targetEl, historySnapshot };
       }
+      if (autoSpeak) autoSpeakCardAnswer(answerCard);
       return;
     }
 
@@ -1533,10 +1673,13 @@
       data.is_chat ||
         data.status === 'conversational' ||
         data.status === 'not_found' ||
+        data.status === 'offline' ||
         data.status === 'grounded_external'
     );
     const mode =
-      data.status === 'not_found' || data.status === 'grounded_external'
+      data.status === 'not_found' ||
+      data.status === 'offline' ||
+      data.status === 'grounded_external'
         ? 'not_found_islamic'
         : hasRag && !data.is_chat
           ? 'grounded'
@@ -1572,12 +1715,8 @@
     };
 
     // 1. Instant Client Cache Hit for grounded queries (unless regenerating)
-    if (
-      !bypassCache &&
-      (mode === 'grounded' || mode === 'not_found_islamic') &&
-      !(historySnapshot && historySnapshot.length && question.length <= 50)
-    ) {
-      const cached = getCachedGroundedAnswer(question, data.primary_key);
+    if (!bypassCache && (mode === 'grounded' || mode === 'not_found_islamic')) {
+      const cached = getCachedGroundedAnswer(question, data.primary_key, historySnapshot);
       if (cached && cached.text) {
         applyExternalMetaToCard(cached.external_sources, cached.upgraded_grounded);
         const srcTag =
@@ -1595,14 +1734,25 @@
             ? `<details class="verbatim-details"><summary>📜 মূল ফতোয়ার হুবহু অংশ দেখুন</summary>${fallbackHtml}</details>`
             : '');
         applyGeneratedAnswerToCard(answerCard, data, cached.text);
+        if (autoSpeak) autoSpeakCardAnswer(answerCard);
         return;
       }
     }
 
     if (!cfAiAvailable) {
       if (mode === 'not_found_islamic') {
-        await tryBrowserDirectQuranFallback(question, data, targetEl, answerCard, applyExternalMetaToCard);
+        const recovered = await tryBrowserDirectQuranFallback(
+          question,
+          data,
+          targetEl,
+          answerCard,
+          applyExternalMetaToCard
+        );
+        if (!recovered) {
+          reportUnansweredQuestionClient(question);
+        }
       }
+      if (autoSpeak) autoSpeakCardAnswer(answerCard);
       return;
     }
 
@@ -1844,7 +1994,14 @@
         if (statusSpan) statusSpan.textContent = '✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ';
         applyGeneratedAnswerToCard(answerCard, data, cleaned);
         if ((mode === 'grounded' && data.primary_key) || wasUpgradedGrounded) {
-          putCachedGroundedAnswer(question, data.primary_key, cleaned, receivedExtSources, wasUpgradedGrounded);
+          putCachedGroundedAnswer(
+            question,
+            data.primary_key,
+            cleaned,
+            receivedExtSources,
+            wasUpgradedGrounded,
+            historySnapshot
+          );
         }
         return;
       }
@@ -1865,7 +2022,14 @@
             ((mode === 'grounded' && data.primary_key) || wasUpgradedGrounded) &&
             isCompleteSentence(finalTxt)
           ) {
-            putCachedGroundedAnswer(question, data.primary_key, finalTxt, receivedExtSources, wasUpgradedGrounded);
+            putCachedGroundedAnswer(
+              question,
+              data.primary_key,
+              finalTxt,
+              receivedExtSources,
+              wasUpgradedGrounded,
+              historySnapshot
+            );
           }
           return;
         }
@@ -1879,11 +2043,15 @@
           applyExternalMetaToCard
         );
         if (recovered) return;
+        reportUnansweredQuestionClient(question);
       }
       targetEl.innerHTML = fallbackHtml;
     } finally {
       if (activeStreamAbort === abortCtrl) {
         activeStreamAbort = null;
+      }
+      if (autoSpeak && !(abortCtrl && abortCtrl.signal.aborted && !loopStoppedClientSide)) {
+        autoSpeakCardAnswer(answerCard);
       }
     }
   }
@@ -1895,6 +2063,8 @@
     let statusBadgeHtml = '';
     if (data.status === 'not_found') {
       statusBadgeHtml = `<span class="badge-notfound">⚠ সরাসরি উত্তর পাওয়া যায়নি</span>`;
+    } else if (data.status === 'offline') {
+      statusBadgeHtml = `<span class="badge-notfound">⚠ নেটওয়ার্ক ছাড়া অবস্থান</span>`;
     } else if (data.status === 'conversational') {
       statusBadgeHtml = `<span class="badge-verified">✓ DAWAH X AI</span>`;
     } else {
@@ -1921,7 +2091,7 @@
       .map((p) => `<p>${formatRichText(p)}</p>`)
       .join('');
     const explanationHtml = data.ai_generated
-      ? data.is_chat || data.status === 'conversational' || data.status === 'not_found'
+      ? data.is_chat || data.status === 'conversational' || data.status === 'not_found' || data.status === 'offline'
         ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
         : `<div class="ai-stream-box"><div class="ai-stream-head"><span>✓ দলিলভিত্তিক বিস্তারিত বিশ্লেষণ</span><small>${escHtml(savedSrcLabel)}</small></div><div class="ai-stream-body">${formatRichText(data.ai_generated)}</div></div>` +
           (rawExplanationHtml
@@ -2044,10 +2214,12 @@
       data.is_chat ||
       data.status === 'conversational' ||
       data.status === 'not_found' ||
+      data.status === 'offline' ||
       data.status === 'grounded_external'
     ) {
       const wrap = document.createElement('article');
       wrap.className = 'msg-ai-chat';
+      wrap._cardData = data;
 
       const quickChips = (data.follow_ups || [])
         .map((fq) => `<button type="button" class="followup-chip" data-q="${escHtml(fq)}">${escHtml(fq)}</button>`)
@@ -2060,6 +2232,15 @@
           : '';
 
       const ttsChatPayload = data.ai_generated || [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
+      const showShareOnBubble =
+        Boolean(data.query) &&
+        (data.status === 'grounded_external' ||
+          (Array.isArray(data.external_sources) && data.external_sources.length > 0) ||
+          (Array.isArray(data.sources) && data.sources.length > 0));
+      const bubbleShareBtns = showShareOnBubble
+        ? `<button type="button" class="mini-btn src-action-btn wa-share-btn" style="padding:3px 9px;font-size:12px;" data-whatsapp-share="${escHtml(data.query)}">📲 WhatsApp</button>` +
+          `<button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-share-q="${escHtml(data.query)}">🔗 শেয়ার</button>`
+        : '';
       wrap.innerHTML = `
         <div class="ai-avatar-dot" title="DAWAH X AI">
           <img src="logo-icon.webp" alt="DX" />
@@ -2077,6 +2258,7 @@
           <div class="chat-bubble-tools">
             <button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-speak-text="${escHtml(ttsChatPayload)}">🔊 শুনুন</button>
             <button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-regenerate-card="1">🔄 পুনরায়</button>
+            ${bubbleShareBtns}
           </div>
         </div>
       `;
@@ -2128,10 +2310,12 @@
       data.primary_url ? `সূত্র: ${data.primary_url}` : `ওয়েবসাইট: https://ebrahim-ead.github.io/DAWAH-X/`,
     ].join('\n\n');
 
+    card._cardData = data;
     const ttsFullText = [data.headline, data.ai_generated || data.direct_answer, ...(data.ai_generated ? [] : data.explanation_paragraphs || [])].join('। ');
-    const isBookmarked = data.primary_key && loadStoredJson(BOOKMARKS_KEY, []).some((b) => b.key === data.primary_key);
-    const bookmarkBtnHtml = data.primary_key
-      ? `<button type="button" class="mini-btn ${isBookmarked ? 'bookmarked' : ''}" data-bookmark-key="${escHtml(data.primary_key)}" data-bookmark-title="${escHtml(data.headline)}">${isBookmarked ? '✓ সংরক্ষিত' : '🔖 সংরক্ষণ'}</button>`
+    const bmKey = data.primary_key || data.sources?.[0]?.key || '';
+    const isBookmarked = bmKey && loadStoredJson(BOOKMARKS_KEY, []).some((b) => b.key === bmKey);
+    const bookmarkBtnHtml = bmKey
+      ? `<button type="button" class="mini-btn ${isBookmarked ? 'bookmarked' : ''}" data-bookmark-key="${escHtml(bmKey)}" data-bookmark-title="${escHtml(data.headline || data.query || 'সংরক্ষিত উত্তর')}">${isBookmarked ? '✓ সংরক্ষিত' : '🔖 সংরক্ষণ'}</button>`
       : '';
 
     card.innerHTML = `
@@ -2157,6 +2341,7 @@
         ${bookmarkBtnHtml}
         <button type="button" class="mini-btn" data-copy-answer="${escHtml(plainCopyText)}">📋 কপি</button>
         <button type="button" class="mini-btn" data-regenerate-card="1">🔄 পুনরায়</button>
+        <button type="button" class="mini-btn src-action-btn wa-share-btn" data-whatsapp-share="${escHtml(data.query || data.headline || '')}">📲 WhatsApp</button>
         <button type="button" class="mini-btn" data-share-q="${escHtml(data.query || data.headline || '')}">🔗 শেয়ার</button>
       </div>
     `;
@@ -2164,8 +2349,9 @@
     return card;
   }
 
-  async function submitQuestion(question) {
+  async function submitQuestion(question, opts = {}) {
     if (isAsking) return;
+    const autoSpeakReply = Boolean(opts && opts.fromVoice);
     abortActiveStream();
     stopSpeech();
     isAsking = true;
@@ -2234,7 +2420,7 @@
       answerCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
       const slot = answerCard.querySelector('[data-llm-slot]');
-      maybeEnhanceWithBrowserLLM(question, data, slot, answerCard, historySnapshot);
+      maybeEnhanceWithBrowserLLM(question, data, slot, answerCard, historySnapshot, false, autoSpeakReply);
     } catch (_) {
       loader.remove();
       const errCard = document.createElement('div');
@@ -2329,6 +2515,38 @@
     contentEl.innerHTML = '<div class="spinner"></div>';
     extUrlEl.href = `https://ebrahim-ead.github.io/DAWAH-X/read.html?k=${encodeURIComponent(key)}`;
 
+    const renderOfflineBookmarkSnap = () => {
+      const bmList = loadStoredJson(BOOKMARKS_KEY, []);
+      const foundBm = bmList.find((b) => b && b.key === key && b.offlineSnap);
+      if (!foundBm || !foundBm.offlineSnap) return false;
+      const snap = foundBm.offlineSnap;
+      activeReaderDoc = {
+        title: snap.headline || foundBm.title,
+        source_name: snap.source_name || 'DAWAH X',
+        dawahx_url: snap.url || `https://ebrahim-ead.github.io/DAWAH-X/`,
+        share_url: snap.url || location.href,
+      };
+      titleEl.textContent = snap.headline || foundBm.title;
+      metaEl.textContent = `${snap.source_name || 'DAWAH X'} · অফলাইনে সংরক্ষিত`;
+      if (snap.url) extUrlEl.href = snap.url;
+      const evHtml =
+        Array.isArray(snap.evidences) && snap.evidences.length
+          ? `<div style="margin-top:16px;padding-top:12px;border-top:1px solid var(--line);"><strong>📖 দলিলসমূহ:</strong><ul>${snap.evidences
+              .map((ev) => `<li>${formatRichText(ev.text)} <small>(${escHtml(ev.source_name || '')})</small></li>`)
+              .join('')}</ul></div>`
+          : '';
+      const formatted = `<div style="line-height:1.9;">${formatRichText(snap.body || '')}</div>${evHtml}`;
+      activeReaderBaseHtml = formatted;
+      contentEl.innerHTML = formatted;
+      const mins = Math.max(1, Math.round(String(snap.body || '').split(/\s+/).length / 165));
+      if (rReadTime) rReadTime.textContent = `⏱ ~${toBnNum(mins)} মিনিট পাঠ`;
+      return true;
+    };
+
+    if (!/^[0-9a-f]{14}$/i.test(String(key || '')) && renderOfflineBookmarkSnap()) {
+      return;
+    }
+
     try {
       let doc = null;
       if (backendAvailable === true) {
@@ -2361,6 +2579,7 @@
       const mins = Math.max(1, Math.round(wordCount / 185));
       if (rReadTime) rReadTime.textContent = `⏱ ~${toBnNum(mins)} মিনিট পাঠ`;
     } catch (_) {
+      if (renderOfflineBookmarkSnap()) return;
       titleEl.textContent = 'লেখাটি লোড করা যায়নি';
       contentEl.innerHTML = `<p>সরাসরি পড়তে <a href="https://ebrahim-ead.github.io/DAWAH-X/read.html?k=${encodeURIComponent(key)}" target="_blank">DAWAH X সাইটে যান ↗</a></p>`;
     }
@@ -2559,7 +2778,15 @@
             if (data && data.ok) {
               setVoiceUiState('idle');
               if (data.text && commitVoiceTranscript(baseText, data.text)) {
-                showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+                const spokenFinal = (questionInput?.value || '').trim();
+                if (!baseText && spokenFinal.length >= 2 && !isAsking) {
+                  showToast('🎙 প্রশ্ন পাঠানো হচ্ছে ও উত্তর পড়ে শোনানো হবে...');
+                  questionInput.value = '';
+                  questionInput.style.height = 'auto';
+                  submitQuestion(spokenFinal, { fromVoice: true });
+                } else {
+                  showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+                }
               } else {
                 showToast('কোনো কথা শোনা যায়নি — মাইক্রোফোনের কাছে স্পষ্টভাবে বলুন');
               }
@@ -2794,7 +3021,15 @@
         if (voiceState === 'recording_web') {
           setVoiceUiState('idle');
           if (gotAnyTranscript) {
-            showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+            const spokenFinal = (questionInput?.value || '').trim();
+            if (!baseText && spokenFinal.length >= 2 && !isAsking) {
+              showToast('🎙 প্রশ্ন পাঠানো হচ্ছে ও উত্তর পড়ে শোনানো হবে...');
+              questionInput.value = '';
+              questionInput.style.height = 'auto';
+              submitQuestion(spokenFinal, { fromVoice: true });
+            } else {
+              showToast('✓ কণ্ঠ থেকে বাংলায় লেখা হয়েছে');
+            }
           }
         }
       };
@@ -2817,6 +3052,7 @@
     voiceBtn.addEventListener('click', () => {
       if (voiceState === 'transcribing') return;
       stopSpeech();
+      unlockSharedAudioGesture();
 
       if (voiceState === 'recording_web') {
         if (activeRecInstance) {
@@ -3114,10 +3350,48 @@
   setInterval(checkLiveBroadcast, 120000);
 
   const cfReadyPromise = detectCloudflareAI();
-  Promise.all([initCorpusWarmup(), cfReadyPromise]).then(() => {
-    const urlQ = new URLSearchParams(location.search).get('q');
-    if (urlQ && urlQ.trim()) {
-      submitQuestion(urlQ.trim());
+  const startupParams = new URLSearchParams(location.search);
+  const startupFilter = (startupParams.get('f') || '').trim();
+  if (
+    startupFilter &&
+    ['all', 'quran', 'hadith', 'fatwa', 'dawah', 'article', 'at', 'ai', 'ik', 'fm', 'ra', 'iz', 'ia'].includes(
+      startupFilter
+    )
+  ) {
+    activeFilter = startupFilter;
+    const matchBtn = filterList?.querySelector(`[data-filter="${startupFilter}"]`);
+    if (matchBtn) {
+      filterList.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+      matchBtn.classList.add('active');
+    } else if (pubSourceSelect) {
+      filterList?.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+      pubSourceSelect.value = startupFilter;
     }
-  });
+  }
+
+  const urlQ = startupParams.get('q');
+  if (urlQ && urlQ.trim()) {
+    // Fast deep-link startup: do NOT block on full corpus index warmup before opening shared question
+    cfReadyPromise.finally(() => {
+      submitQuestion(urlQ.trim());
+    });
+  } else {
+    // v23.0 — Slow Mobile Network Optimization: lazy-load index shards during browser idle time
+    const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+    const isSlowOrSaveData = Boolean(conn && (conn.saveData || /(?:^|slow-)2g/i.test(String(conn.effectiveType || ''))));
+    let warmedUp = false;
+    const triggerLazyWarmup = () => {
+      if (warmedUp) return;
+      warmedUp = true;
+      initCorpusWarmup();
+    };
+    questionInput?.addEventListener('focus', triggerLazyWarmup, { once: true });
+    if (!isSlowOrSaveData) {
+      if (typeof window.requestIdleCallback === 'function') {
+        window.requestIdleCallback(() => triggerLazyWarmup(), { timeout: 1400 });
+      } else {
+        setTimeout(triggerLazyWarmup, 650);
+      }
+    }
+  }
 })();
