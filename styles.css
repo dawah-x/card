@@ -2559,3 +2559,18 @@ mark.reader-hl {
   }
 }
 
+/* v23.0 — Subtle WhatsApp / Dawah Quick-Share Button Accent */
+.src-action-btn.wa-share-btn {
+  border-color: rgba(37, 211, 102, 0.34);
+  color: #34d399;
+}
+[data-theme="light"] .src-action-btn.wa-share-btn {
+  border-color: rgba(22, 163, 74, 0.35);
+  color: #15803d;
+}
+.src-action-btn.wa-share-btn:hover {
+  background: rgba(37, 211, 102, 0.14);
+  border-color: rgba(37, 211, 102, 0.65);
+}
+
+

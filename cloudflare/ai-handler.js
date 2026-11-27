@@ -51,7 +51,7 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
-    version: '22.0',
+    version: '23.0',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
@@ -72,12 +72,15 @@ export function handleHealth(env) {
       islamic_book_volumes: 102,
       fatwas_and_articles: 24207,
     },
+    deep_book_search: true,
+    multi_turn_memory: true,
+    unanswered_tracker: true,
     tafsir_enabled: true,
     quran_audio_enabled: true,
     voice_stt_enabled: hasAI || hasGroq,
     voice_tts_enabled: true,
     strict_allowlist_only: true,
-    anti_repetition: 'sentence-stream-guard-v22',
+    anti_repetition: 'sentence-stream-guard-v23',
     edge_cache: true,
     streaming: true,
     strict_rag: true,
@@ -213,10 +216,10 @@ async function computeEdgeCacheRequest(mode, question, headline, primaryCite) {
       .trim()
       .toLowerCase()
       .replace(/\s+/g, ' ');
-    const rawKey = `v22-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
+    const rawKey = `v23-3sources|${mode}|${normQ}|${String(headline || '').slice(0, 120)}|${String(primaryCite || '').slice(0, 120)}`;
     const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rawKey));
     const hex = [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
-    return new Request(`https://cache.dawahx.internal/ai-v22/${hex}`, { method: 'GET' });
+    return new Request(`https://cache.dawahx.internal/ai-v23/${hex}`, { method: 'GET' });
   } catch (_) {
     return null;
   }
@@ -350,7 +353,8 @@ function buildMessages({
       '১. অনুমোদিত উৎস নির্ভরতা: নিচে প্রদত্ত DAWAH X, Quran.com ও HadithBD-এর উদ্ধৃতি ও দলিলের বাইরে অন্য কোনো চতুর্থ ওয়েবসাইট বা নিজস্ব অনুমান থেকে কোনো ফতোয়া বা হাদীস নম্বর কখনোই যোগ করবে না।\n' +
       '২. সরাসরি মূল উত্তর দিয়ে শুরু: প্রথম অনুচ্ছেদেই প্রশ্নকারীর নির্দিষ্ট প্রশ্নের সরাসরি ও স্পষ্ট উত্তর জানাবে।\n' +
       '৩. সুসংহত ব্যাখ্যা ও দলিল উল্লেখ: কুরআনের আয়াত ও সহীহ হাদীসের প্রাসঙ্গিক আরবি ও বাংলা অর্থ উল্লেখ করবে, সূরা:আয়াত বা হাদীস গ্রন্থ ও নম্বর লিখবে এবং পাশে [১], [২] সূত্র নম্বর উল্লেখ করবে।\n' +
-      '৪. বিশুদ্ধ বাংলা ভাষা: কুরআন-হাদীসের আরবি উদ্ধৃতি ছাড়া সম্পূর্ণ উত্তর বিশুদ্ধ ও প্রমিত বাংলায় লিখবে (হিন্দি বা উর্দু কখনোই ব্যবহার করবে না)। কোনো বাক্য পুনরাবৃত্তি না করে পরিপূর্ণ বাক্যে উত্তর সমাপ্ত করবে।';
+      '৪. বিশুদ্ধ বাংলা ভাষা: কুরআন-হাদীসের আরবি উদ্ধৃতি ছাড়া সম্পূর্ণ উত্তর বিশুদ্ধ ও প্রমিত বাংলায় লিখবে (হিন্দি বা উর্দু কখনোই ব্যবহার করবে না)। কোনো বাক্য পুনরাবৃত্তি না করে পরিপূর্ণ বাক্যে উত্তর সমাপ্ত করবে।\n' +
+      '৫. ধারাবাহিক কথোপকথনের স্মৃতি: যদি আগের বার্তাসমূহে কোনো চলমান আলোচনা থাকে এবং ব্যবহারকারী তার বিশেষ পরিস্থিতি বা পরবর্তী প্রশ্ন (যেমন: "আমার ক্ষেত্রে...", "সফরে থাকলে...", "তাহলে কী করব?") উল্লেখ করেন, তবে পূর্ববর্তী আলোচনার ধারাবাহিকতা বজায় রেখে নিচের যাচাইকৃত দলিলের আলোকে সরাসরি সেই অবস্থার বিধান স্পষ্ট করবে।';
 
     const numberedBlocks = [];
     let refCounter = 1;
@@ -424,23 +428,28 @@ function buildMessages({
 
   const messages = [{ role: 'system', content: systemPrompt }];
 
-  const isAnaphoricFollowup =
-    cleanQ.length <= 52 && /(?:এটা|এটি|ওটা|সেটা|এতে|এর|তাহলে|এক্ষেত্রে|সেক্ষেত্রে|^আর\s)/iu.test(cleanQ);
+  const isFollowupConversation =
+    safeHistory.length >= 2 &&
+    cleanQ.length <= 220 &&
+    /(?:এটা|এটি|ওটা|সেটা|এতে|এর|তাহলে|এক্ষেত্রে|সেক্ষেত্রে|আমার\s*ক্ষেত্রে|আমি\s*যদি|সফরে\s*থাকলে|ভুলে\s*গেলে|মহিলাদের?\s*ক্ষেত্রে|বাচ্চাদের?\s*ক্ষেত্রে|দ্বিতীয়|আরেকটু|বিস্তারিত|সহজ\s*করে|সংক্ষেপে|^আর\s|^কিন্তু\s|^তো\s|^যদি\s)/iu.test(
+      cleanQ
+    );
   const historySlice =
     mode === 'continue'
       ? []
       : mode === 'grounded'
-        ? isAnaphoricFollowup
-          ? safeHistory.slice(-2)
+        ? isFollowupConversation
+          ? safeHistory.slice(-6)
           : []
         : safeHistory.slice(-6);
 
   for (const turn of historySlice) {
-    if (!turn || !turn.text) continue;
+    if (!turn || !(turn.ai_answer || turn.text)) continue;
     const role = turn.role === 'user' ? 'user' : 'assistant';
+    const contentText = role === 'assistant' ? String(turn.ai_answer || turn.text) : String(turn.text);
     messages.push({
       role,
-      content: String(turn.text).slice(0, 750),
+      content: contentText.slice(0, 750),
     });
   }
 
@@ -686,9 +695,15 @@ export async function handleAIChat(request, env, ctx = null) {
   // 1. Check Global Cloudflare Edge Cache (`caches.default`) FIRST (0ms external latency & 0 Neurons)
   const edgeCache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
   const primaryCite = body?.rag_context?.[0]?.citation || body?.rag_context?.[0]?.title || '';
+  const hasConversationContext =
+    Array.isArray(body?.history) &&
+    body.history.length >= 2 &&
+    question.length <= 220 &&
+    /(?:এটা|এটি|ওটা|সেটা|এতে|এর|তাহলে|এক্ষেত্রে|সেক্ষেত্রে|আমার\s*ক্ষেত্রে|আমি\s*যদি|সফরে\s*থাকলে|ভুলে\s*গেলে|মহিলাদের?\s*ক্ষেত্রে|বাচ্চাদের?\s*ক্ষেত্রে|দ্বিতীয়|আরেকটু|বিস্তারিত|সহজ\s*করে|সংক্ষেপে|^আর\s|^কিন্তু\s|^তো\s|^যদি\s)/iu.test(
+      question
+    );
   const isPotentiallyCacheable =
-    (initialMode === 'grounded' || initialMode === 'not_found_islamic') &&
-    (!Array.isArray(body?.history) || body.history.length === 0 || question.length > 52);
+    (initialMode === 'grounded' || initialMode === 'not_found_islamic') && !hasConversationContext;
 
   const cacheReq =
     isPotentiallyCacheable && edgeCache
@@ -742,6 +757,14 @@ export async function handleAIChat(request, env, ctx = null) {
     if (mode === 'not_found_islamic' && externalSources.length > 0) {
       mode = 'grounded';
       upgradedFromNotFound = true;
+    }
+  }
+
+  // Silently record unanswered Islamic questions so DAWAH X can see what new topics users need
+  if (mode === 'not_found_islamic' && !upgradedFromNotFound) {
+    const logTask = recordUnansweredQuestion(question, body?.source_filter || 'all', env).catch(() => {});
+    if (ctx && typeof ctx.waitUntil === 'function') {
+      ctx.waitUntil(logTask);
     }
   }
 
@@ -1211,3 +1234,172 @@ export async function handleVoiceTTS(request, env, ctx) {
 
   return jsonResponse({ ok: false, error: 'tts_upstream_unavailable' }, 502);
 }
+
+// =========================================================================
+// Silent Privacy-Safe Unanswered Question Tracker (`GET/POST /api/unanswered`)
+// Uses Cloudflare Edge Cache (`caches.default`) + optional `env.UNANSWERED_KV`
+// with zero paid dependencies and automatic PII redaction.
+// =========================================================================
+const UNANSWERED_CACHE_URL = 'https://cache.dawahx.internal/unanswered-log-v23';
+const MEM_UNANSWERED_MAP = new Map();
+
+const SECULAR_OOD_FILTER_RE =
+  /(?:ম্যাচের?\s*স্কোর|খেলার?\s*স্কোর|লাইভ\s*স্কোর|ক্রিকেট|(?:ট্রেনের?|বাসের?|বিমানের?|লঞ্চের?)\s*(?:টিকেট\s*|টিকিট\s*)?ভাড়া\s*কত|আবহাওয়া\s*কেমন|তাপমাত্রা\s*কত|(?:বিরিয়ানি|খিচুড়ি|কেক|রান্না\s*করার)\s*রেসিপি|(?:পাইথন|পাইথনে|জাভাস্ক্রিপ্ট|রিয়্যাক্ট|প্রোগ্রামিং).*কোড)/iu;
+
+export function sanitizeAnonymousQuestion(rawQuestion) {
+  const cleaned = String(rawQuestion || '')
+    .replace(/\S+@\S+\.\S+/g, '[ইমেইল গোপন]')
+    .replace(/(?:\+?88)?01[3-9]\d{8}/g, '[ফোন গোপন]')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 240);
+  if (cleaned.length < 6) return '';
+  if (SECULAR_OOD_FILTER_RE.test(cleaned)) return '';
+  return cleaned;
+}
+
+async function loadUnansweredStore(env) {
+  const merged = new Map();
+  for (const [k, v] of MEM_UNANSWERED_MAP.entries()) {
+    merged.set(k, { ...v });
+  }
+
+  // Merge from Cloudflare Edge Cache if available
+  const edgeCache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
+  if (edgeCache) {
+    try {
+      const hit = await edgeCache.match(new Request(UNANSWERED_CACHE_URL, { method: 'GET' }));
+      if (hit && hit.ok) {
+        const list = await hit.json();
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (!item || !item.norm) continue;
+            const prev = merged.get(item.norm);
+            if (!prev || (item.count || 1) > (prev.count || 1)) {
+              merged.set(item.norm, item);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Also merge from optional Workers KV binding if configured
+  if (env && env.UNANSWERED_KV && typeof env.UNANSWERED_KV.get === 'function') {
+    try {
+      const kvRaw = await env.UNANSWERED_KV.get('unanswered_v23');
+      if (kvRaw) {
+        const list = JSON.parse(kvRaw);
+        if (Array.isArray(list)) {
+          for (const item of list) {
+            if (!item || !item.norm) continue;
+            const prev = merged.get(item.norm);
+            if (!prev || (item.count || 1) > (prev.count || 1)) {
+              merged.set(item.norm, item);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+  }
+
+  return merged;
+}
+
+async function persistUnansweredStore(storeMap, env) {
+  const sorted = [...storeMap.values()]
+    .sort((a, b) => (b.count || 1) - (a.count || 1) || String(b.last_seen || '').localeCompare(String(a.last_seen || '')))
+    .slice(0, 200);
+
+  MEM_UNANSWERED_MAP.clear();
+  for (const item of sorted) {
+    MEM_UNANSWERED_MAP.set(item.norm, item);
+  }
+
+  const serialized = JSON.stringify(sorted);
+  const edgeCache = typeof caches !== 'undefined' && caches.default ? caches.default : null;
+  if (edgeCache) {
+    try {
+      await edgeCache.put(
+        new Request(UNANSWERED_CACHE_URL, { method: 'GET' }),
+        new Response(serialized, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Cache-Control': 'public, max-age=2592000',
+          },
+        })
+      );
+    } catch (_) {}
+  }
+
+  if (env && env.UNANSWERED_KV && typeof env.UNANSWERED_KV.put === 'function') {
+    try {
+      await env.UNANSWERED_KV.put('unanswered_v23', serialized);
+    } catch (_) {}
+  }
+
+  return sorted;
+}
+
+export async function recordUnansweredQuestion(rawQuestion, filter = 'all', env = null) {
+  const safeQ = sanitizeAnonymousQuestion(rawQuestion);
+  if (!safeQ) return false;
+  const norm = safeQ.toLowerCase();
+  const nowIso = new Date().toISOString();
+
+  const store = await loadUnansweredStore(env);
+  const existing = store.get(norm);
+  if (existing) {
+    existing.count = (existing.count || 1) + 1;
+    existing.last_seen = nowIso;
+  } else {
+    store.set(norm, {
+      norm,
+      question: safeQ,
+      filter: String(filter || 'all').slice(0, 24),
+      count: 1,
+      first_seen: nowIso,
+      last_seen: nowIso,
+    });
+  }
+  await persistUnansweredStore(store, env);
+  return true;
+}
+
+export async function handleUnansweredTracker(request, env, ctx = null) {
+  if (request.method === 'GET') {
+    const store = await loadUnansweredStore(env);
+    const items = [...store.values()]
+      .sort((a, b) => (b.count || 1) - (a.count || 1) || String(b.last_seen || '').localeCompare(String(a.last_seen || '')))
+      .slice(0, 100)
+      .map(({ question, filter, count, first_seen, last_seen }) => ({
+        question,
+        filter,
+        count,
+        first_seen,
+        last_seen,
+      }));
+    return jsonResponse({
+      ok: true,
+      service: 'dawahx-unanswered-tracker',
+      version: '23.0',
+      total_unique: items.length,
+      items,
+    });
+  }
+
+  if (request.method === 'POST') {
+    let body = {};
+    try {
+      body = await request.json();
+    } catch (_) {
+      return jsonResponse({ ok: false, error: 'invalid_json' }, 400);
+    }
+    const recorded = await recordUnansweredQuestion(body?.question, body?.filter || 'all', env);
+    return jsonResponse({ ok: true, recorded });
+  }
+
+  return jsonResponse({ ok: false, error: 'method_not_allowed' }, 405);
+}
+
