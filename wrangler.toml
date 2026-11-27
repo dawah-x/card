@@ -10,6 +10,10 @@ binding = "ASSETS"
 [ai]
 binding = "AI"
 
+[[kv_namespaces]]
+binding = "UNANSWERED_KV"
+id = "afbecddb46bd4c7f935e45fb87b1dd91"
+
 # Secondary Cloudflare Worker environment ("dawahx-assistant")
 # Deploy command in Cloudflare Dashboard: npx wrangler deploy --name dawahx-assistant
 [env.assistant]
@@ -22,3 +26,7 @@ binding = "ASSETS"
 
 [env.assistant.ai]
 binding = "AI"
+
+[env.assistant.kv_namespaces]
+binding = "UNANSWERED_KV"
+id = "afbecddb46bd4c7f935e45fb87b1dd91"
