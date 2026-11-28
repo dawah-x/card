@@ -2090,6 +2090,57 @@
     const rawExplanationHtml = (data.explanation_paragraphs || [])
       .map((p) => `<p>${formatRichText(p)}</p>`)
       .join('');
+
+    // ===== v23.1 Contextual Citations (প্রসঙ্গ উদ্ধৃতি) =====
+    // Build inline [১][২] markers in the answer and a citation strip showing
+    // the exact source + short context quote behind each claim.
+    const citationSources = (data.sources || []).slice(0, 4).map((s, i) => ({
+      n: i + 1,
+      title: s.title || s.clean_title || `উৎস ${i + 1}`,
+      sourceName: s.source_name || s.source_site || 'DAWAH X',
+      url: s.dawahx_url || s.url || s.share_url || '',
+      excerpt: s.excerpt || s.full_text || '',
+    }));
+    const hasCitations = citationSources.length > 0;
+    // Inline-cite: mark the first N source titles inside the direct answer so
+    // each claim visibly points to its source.
+    const citeInline = (text) => {
+      if (!hasCitations || !text) return text;
+      let out = String(text);
+      citationSources.forEach((c) => {
+        if (!c.title) return;
+        const re = new RegExp(`(\\b${c.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b)`, 'u');
+        if (re.test(out) && !out.includes(`[${c.n}]`)) {
+          out = out.replace(re, `$1 [${c.n}]`);
+        }
+      });
+      return out;
+    };
+    const citationStripHtml = hasCitations
+      ? `
+        <div class="citation-strip">
+          <div class="citation-head">📜 প্রসঙ্গ উদ্ধৃতি — উত্তরের প্রতিটি দাবির মূল উৎস</div>
+          <ol class="citation-list">
+            ${citationSources
+              .map(
+                (c) => `
+              <li>
+                <span class="cite-num">[${c.n}]</span>
+                <div class="cite-body">
+                  <a href="${escHtml(c.url)}" target="_blank" rel="noopener noreferrer" class="cite-link">${escHtml(c.sourceName)}: ${escHtml(c.title)} ↗</a>
+                  ${
+                    c.excerpt
+                      ? `<p class="cite-excerpt">“${escHtml(String(c.excerpt).slice(0, 160))}${String(c.excerpt).length > 160 ? '…' : ''}”</p>`
+                      : ''
+                  }
+                </div>
+              </li>`
+              )
+              .join('')}
+          </ol>
+        </div>`
+      : '';
+
     const explanationHtml = data.ai_generated
       ? data.is_chat || data.status === 'conversational' || data.status === 'not_found' || data.status === 'offline'
         ? `<div class="ai-stream-body">${formatRichText(data.ai_generated)}</div>`
@@ -2231,6 +2282,17 @@
           ? `<div data-notfound-action="1" style="margin-top:6px;"><a href="${escHtml(data.ask_team_url || 'https://ebrahim-ead.github.io/DAWAH-X/ask.html')}" target="_blank" rel="noopener noreferrer" class="src-action-btn gold-link">✉ শরঈ প্রশ্ন হলে DAWAH X টিমে পাঠান ↗</a></div>`
           : '';
 
+      // v23.1 Auto-response rephrase chips for unanswered questions
+      const rephraseChips =
+        data.status === 'not_found' && Array.isArray(data.rephrase_suggestions) && data.rephrase_suggestions.length
+          ? `<div class="rephrase-suggestions">
+              <div class="rephrase-label">🔄 প্রশ্নটি একটু ভিন্নভাবে আবার চেষ্টা করুন:</div>
+              <div class="rephrase-chips">${data.rephrase_suggestions
+                .map((rs) => `<button type="button" class="followup-chip rephrase-chip" data-q="${escHtml(rs)}" title="এই প্রস্তাব দিয়ে আবার খুঁজুন">${escHtml(rs)}</button>`)
+                .join('')}</div>
+            </div>`
+          : '';
+
       const ttsChatPayload = data.ai_generated || [data.direct_answer, ...(data.explanation_paragraphs || [])].join(' ');
       const showShareOnBubble =
         Boolean(data.query) &&
@@ -2247,13 +2309,15 @@
         </div>
         <div class="ai-chat-bubble">
           <div data-llm-slot>
-            ${data.ai_generated ? explanationHtml : `<p>${formatRichText(data.direct_answer)}</p>${explanationHtml}`}
+            ${data.ai_generated ? explanationHtml : `<p>${formatRichText(citeInline(data.direct_answer))}</p>${explanationHtml}`}
           </div>
+          ${citationStripHtml}
           ${dalilHtml}
           ${sourcesHtml}
           <div data-ext-sources-slot>${extSourcesHtml}</div>
           ${videosHtml}
           ${notFoundAction}
+          ${rephraseChips}
           ${quickHtml}
           <div class="chat-bubble-tools">
             <button type="button" class="mini-btn" style="padding:3px 9px;font-size:12px;" data-speak-text="${escHtml(ttsChatPayload)}">🔊 শুনুন</button>
@@ -2327,9 +2391,10 @@
       ${scenarioHtml}
       <div class="ai-direct-verdict">
         <strong class="verdict-lbl">মূল সিদ্ধান্ত:</strong>
-        <span>${formatRichText(data.direct_answer)}</span>
+        <span>${formatRichText(citeInline(data.direct_answer))}</span>
       </div>
       <div class="ai-explanation" data-llm-slot>${explanationHtml}</div>
+      ${citationStripHtml}
       ${seriesHtml}
       ${dalilHtml}
       ${sourcesHtml}

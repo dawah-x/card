@@ -5086,18 +5086,61 @@
       };
     },
 
+    // v23.1 Auto-response helper: build automatic rephrase suggestions for
+    // questions that could not be answered, using the question's own keywords
+    // and the partial (low-confidence) matches that were found.
+    _buildRephraseSuggestions(question, partialDocs = []) {
+      const q = String(question || '').trim();
+      const bases = [];
+      const pushBase = (label) => {
+        const clean = String(label || '').trim();
+        if (clean && !bases.includes(clean)) bases.push(clean);
+      };
+
+      // 1. Derive a simplified keyword-only rephrase
+      const tokens = tokenizeFolded(q, true).filter(isCoreToken);
+      if (tokens.length >= 2) {
+        pushBase(`${tokens.slice(0, 4).join(' ')} সম্পর্কে ইসলামিক বিধান কী?`);
+      }
+      if (tokens.length >= 1) {
+        pushBase(`${tokens[0]} সম্পর্কে কুরআন ও হাদিসের দলিল কী?`);
+        pushBase(`${tokens[0]} নিয়ে ফতোয়া কী?`);
+      }
+
+      // 2. If partial low-confidence sources exist, suggest the most relevant topic
+      const best = partialDocs
+        .slice()
+        .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+        .slice(0, 2);
+      for (const p of best) {
+        if (p && p.clean_title) {
+          pushBase(`${p.clean_title} সম্পর্কে বিস্তারিত দাও`);
+        }
+      }
+
+      // 3. Always keep the general ask-the-team path
+      pushBase('এই প্রশ্নটি DAWAH X টিমে পাঠিয়ে দিন');
+
+      return bases.slice(0, 4);
+    },
+
     _notFoundPayload(question, partialDocs, videos, t0) {
       const validPartials = partialDocs.filter((c) => c.confidence >= 0.16);
+      // v23.1 Auto-response: generate automatic rephrase suggestions from the
+      // question so users get actionable follow-ups instead of a dead end.
+      const autoSuggestions = this._buildRephraseSuggestions(question, validPartials);
       return {
         status: 'not_found',
         is_chat: true,
+        auto_response: true,
         query: question,
         headline: '',
         direct_answer:
           'দুঃখিত, এই নির্দিষ্ট প্রশ্নটির সরাসরি দলিল **DAWAH X**, **Quran.com** কিংবা **HadithBD (বাংলা হাদিস)**-এ এই মুহূর্তে খুঁজে পাওয়া যায়নি। অনুমাননির্ভর বা যাচাইহীন তথ্য এড়াতে শুধুমাত্র এই তিনটি যাচাইকৃত উৎস থেকেই উত্তর প্রদান করা হয়।',
         explanation_paragraphs: [
-          'আপনি চাইলে প্রশ্নটি একটু ভিন্ন শব্দে লিখে পুনরায় খুঁজতে পারেন, অথবা নিচের বাটনে ক্লিক করে প্রশ্নটি সরাসরি **DAWAH X টিমে** পাঠাতে পারেন।',
+          'আপনি চাইলে নিচের স্বয়ংক্রিয় প্রস্তাবগুলো দিয়ে প্রশ্নটি একটু ভিন্ন শব্দে পুনরায় খুঁজতে পারেন, অথবা নিচের বাটনে ক্লিক করে প্রশ্নটি সরাসরি **DAWAH X টিমে** পাঠাতে পারেন।',
         ],
+        rephrase_suggestions: autoSuggestions,
         additional_perspectives: [],
         evidences: [],
         sources: validPartials.map((s, i) => ({

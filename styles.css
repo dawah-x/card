@@ -965,6 +965,106 @@ a:focus-visible {
   margin-top: 2px;
 }
 
+/* v23.1 Contextual Citation Strip */
+.citation-strip {
+  background: linear-gradient(180deg, rgba(245, 184, 28, 0.07), rgba(245, 184, 28, 0.02));
+  border: 1px solid var(--gold-border);
+  border-radius: 12px;
+  padding: 12px 16px;
+  margin-top: 10px;
+}
+
+.citation-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.citation-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.citation-list li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  font-size: 13.5px;
+}
+
+.cite-num {
+  font-weight: 700;
+  color: var(--gold-bright);
+  background: rgba(245, 184, 28, 0.12);
+  border-radius: 6px;
+  padding: 1px 7px;
+  font-size: 12.5px;
+  flex-shrink: 0;
+  min-width: 26px;
+  text-align: center;
+}
+
+.cite-body { flex: 1; }
+
+.cite-link {
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.cite-link:hover { color: var(--gold); }
+
+.cite-excerpt {
+  margin: 3px 0 0;
+  font-size: 12.5px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* v23.1 Auto-response Rephrase Suggestions */
+.rephrase-suggestions {
+  margin-top: 12px;
+  padding: 10px 14px;
+  background: rgba(245, 184, 28, 0.05);
+  border: 1px dashed var(--gold-border);
+  border-radius: 10px;
+}
+
+.rephrase-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--gold);
+  margin-bottom: 7px;
+}
+
+.rephrase-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rephrase-chip {
+  background: var(--card-bg);
+  border: 1px solid var(--gold-border);
+  color: var(--text-soft);
+  font-size: 12.5px;
+  border-radius: 999px;
+  padding: 4px 11px;
+  cursor: pointer;
+}
+
+.rephrase-chip:hover {
+  background: var(--gold-bg, rgba(245, 184, 28, 0.12));
+  color: var(--gold-bright);
+}
+
 /* Additional corroborating sources */
 .extra-perspectives {
   border-top: 1px dashed var(--line);
