@@ -51,13 +51,17 @@ export function handleHealth(env) {
   return jsonResponse({
     ok: hasAI || hasGemini || hasGroq,
     service: 'dawahx-cloudflare-ai',
-    version: '23.0',
+    version: '23.1',
     engine: hasAI ? 'cloudflare-workers-ai' : hasGemini || hasGroq ? 'external-free-ai' : 'missing-ai-binding',
     primary_model: MODEL_CASCADE[0],
     fallback_models: MODEL_CASCADE.slice(1),
     backup_providers: [
       ...(hasGroq ? ['groq'] : []),
-      ...(hasGemini ? ['gemini'] : []),
+      ...(hasGemini ? ['gemini-3.1-flash-lite', 'gemini-2.5-flash'] : []),
+    ],
+    external_models: [
+      ...(env && env.GROQ_API_KEY ? ['groq/gpt-oss-120b'] : []),
+      ...(env && env.GEMINI_API_KEY ? ['gemini/gemini-3.1-flash-lite-preview', 'gemini/gemini-2.5-flash'] : []),
     ],
     verified_sources: [
       'https://ebrahim-ead.github.io/DAWAH-X/',
@@ -599,6 +603,14 @@ async function tryExternalFreeProviders(
     });
   }
   if (env && env.GEMINI_API_KEY) {
+    // Gemini 3.1 Flash-Lite: fastest & most cost-efficient Gemini 3 series model
+    providers.push({
+      name: 'gemini/gemini-3.1-flash-lite',
+      url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
+      key: env.GEMINI_API_KEY,
+      model: 'gemini-3.1-flash-lite-preview',
+    });
+    // Gemini 2.5 Flash kept as secondary fallback if 3.1 Flash-Lite is unavailable
     providers.push({
       name: 'gemini/gemini-2.5-flash',
       url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
@@ -1383,7 +1395,7 @@ export async function handleUnansweredTracker(request, env, ctx = null) {
     return jsonResponse({
       ok: true,
       service: 'dawahx-unanswered-tracker',
-      version: '23.0',
+      version: '23.1',
       total_unique: items.length,
       items,
     });
